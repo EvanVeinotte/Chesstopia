@@ -20,6 +20,7 @@ class ChessGame {
         this.user1 = user1
         this.user2 = user2
         this.turn = 0
+        this.gameisover = false;
         this.boardstate = [14,12,13,15,16,13,12,14,
                             11,11,11,11,11,11,11,11,
                             0,0,0,0,0,0,0,0,
@@ -86,13 +87,152 @@ class ChessGame {
         return elo
     }
 
-    gameOver(){
+    async gameOver(reason, userthatlost, db){
+        /*
+        game is over if:
+        -checkmate
+        -draw
+        -someone resigns
+        -someone disconnects
+        ////
+        whitewins = 0
+        blackwins = 1
+        draw = 2
+        
+        */
 
+        if(this.gameisover == false){
+
+            let userthatwon;
+
+            if(userthatlost === this.user1){
+                userthatwon = this.user2;
+            }
+            else if(userthatlost === this.user2){
+                userthatwon = this.user1;
+            }
+            else{
+                userthatwon = 0;
+            }
+            
+            let whiteuserobj = await db.collection('users').findOne({username: this.white.split(";")[0]});
+            let blackuserobj = await db.collection('users').findOne({username: this.black.split(";")[0]});
+
+            let whitewin;
+            let blackwin;
+            let whiteloss;
+            let blackloss;
+            let whitedraw;
+            let blackdraw;
+            let whiteTOE;
+            let blackTOE;
+            let whitetotalgames;
+            let blacktotalgames;
+            let whiteelodif;
+            let blackelodif;
+            
+            let userwinner;
+
+            if(userthatwon === this.white){
+                whitewin = whiteuserobj.wins + 1;
+                whiteloss = whiteuserobj.losses;
+                whitedraw = whiteuserobj.draws;
+                whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
+                blackwin = blackuserobj.wins;
+                blackloss = blackuserobj.losses + 1;
+                blackdraw = blackuserobj.draws;
+                blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
+
+                userwinner = this.white.split(";")[0];
+                console.log("white(" + userwinner + ") won!")
+            }
+            else if(userthatwon === this.black){
+                whitewin = whiteuserobj.wins;
+                whiteloss = whiteuserobj.losses + 1;
+                whitedraw = whiteuserobj.draws;
+                whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
+                blackwin = blackuserobj.wins + 1;
+                blackloss = blackuserobj.losses;
+                blackdraw = blackuserobj.draws;
+                blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
+                userwinner = this.black.split(";")[0];
+                console.log("black(" + userwinner + ") won!")
+            }
+            else if(userthatwon === 0){
+                whitewin = whiteuserobj.wins;
+                whiteloss = whiteuserobj.losses;
+                whitedraw = whiteuserobj.draws + 1;
+                whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
+                blackwin = blackuserobj.wins;
+                blackloss = blackuserobj.losses;
+                blackdraw = blackuserobj.draws + 1;
+                blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
+                userwinner = 0;
+            }
+            whitetotalgames = whiteuserobj.gamesplayed + 1;
+            blacktotalgames = blackuserobj.gamesplayed + 1;
+
+
+            let elowhite = this.calcElo(whiteTOE, whitewin, whiteloss, whitetotalgames);
+            let eloblack = this.calcElo(blackTOE, blackwin, blackloss, blacktotalgames);
+
+            whiteelodif = elowhite - whiteuserobj.elo;
+            blackelodif = eloblack - blackuserobj.elo;
+
+            db.collection("users").updateOne({username: this.white.split(";")[0]}, 
+                                            {$set: {
+                                                wins: whitewin,
+                                                losses: whiteloss,
+                                                draws: whitedraw,
+                                                elo: elowhite,
+                                                gamesplayed: whitetotalgames,
+                                                totalopponentelo: whiteTOE
+                                            }});
+
+            db.collection("users").updateOne({username: this.black.split(";")[0]}, 
+                                            {$set: {
+                                                wins: blackwin,
+                                                losses: blackloss,
+                                                draws: blackdraw,
+                                                elo: eloblack,
+                                                gamesplayed: blacktotalgames,
+                                                totalopponentelo: blackTOE
+                                            }});
+
+            let gameoverdata = {
+                type: "gameover", data: {
+                    reason: reason,
+                    winner: userwinner,
+                    whiteelo: {newelo: elowhite, dif: whiteelodif},
+                    blackelo: {newelo: eloblack, dif: blackelodif}
+                }
+            }
+
+
+            if(SOCKET_MAP.get(this.white)){
+                SOCKET_MAP.get(this.white).send(JSON.stringify(gameoverdata));
+            }
+            if(SOCKET_MAP.get(this.black)){
+                SOCKET_MAP.get(this.black).send(JSON.stringify(gameoverdata));
+            }
+            this.gameisover = true;
+        }
+        
     }
 
     newGame(){
         SOCKET_MAP.get(this.user1).send(JSON.stringify({type:"restartgame"}));
         SOCKET_MAP.get(this.user2).send(JSON.stringify({type:"restartgame"}));
+        this.turn = 0
+        this.gameisover = false;
+        this.boardstate = [14,12,13,15,16,13,12,14,
+                            11,11,11,11,11,11,11,11,
+                            0,0,0,0,0,0,0,0,
+                            0,0,0,0,0,0,0,0,
+                            0,0,0,0,0,0,0,0,
+                            0,0,0,0,0,0,0,0,
+                            1,1,1,1,1,1,1,1,
+                            4,2,3,5,6,3,2,4]
     }
 
 }
@@ -169,6 +309,15 @@ MongoClient.connect(mongo_url, (err, client) => {
                     console.log("game not found")
                 }
             }
+            else if (msg["type"] == "gameover"){
+                let usergame = currentgames.get(msg.data.gamecode)
+                if(usergame){
+                    usergame.gameOver(msg.data.reason, msg.data.loser, db);
+                }
+                else{
+                    console.log("game not found")
+                }
+            }
 
         });
 
@@ -187,11 +336,13 @@ MongoClient.connect(mongo_url, (err, client) => {
 
                 currentgames.forEach((value, key, _map) => {
                     if(value.user1 == user){
-                        console.log("user1 disconnected from game")
+                        console.log("user1 disconnected from game", )
+                        value.gameOver("opponent disconnected from game", value.user1, db);
                         //end the game and make user that didn't disconnect win
                     }
                     else if(value.user2 == user){
                         console.log("user2 disconnected from game")
+                        value.gameOver("opponent disconnected from game", value.user2, db);
                     }
                 });
 
@@ -217,12 +368,12 @@ MongoClient.connect(mongo_url, (err, client) => {
     }
 
     async function createUser(username, password){
-        
+
         if(!username.match("^[A-Za-z0-9]+$") || !password.match("^[A-Za-z0-9]+$")){
             return({type:"usercreationresult", data:{result:"invalidchars"}});
         }
         
-        let result = await db.collection('Users').findOne({username: username});
+        let result = await db.collection('users').findOne({username: username});
         //result will be true if username is already taken
         if(result){
             return({type:"usercreationresult", data:{result:"alreadytaken"}});
@@ -236,6 +387,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                 position: 0,
                 curhat: 0,
                 elo: 800,
+                totalopponentelo: 0,
                 credits: 0,
                 ownedhats: [0],
                 gamesplayed: 0,
@@ -258,7 +410,7 @@ MongoClient.connect(mongo_url, (err, client) => {
     }
 
     async function login(username, password){
-        let result = await db.collection('Users').findOne({username: username});
+        let result = await db.collection('users').findOne({username: username});
 
         if(!result){
             //100 = user does not exist
