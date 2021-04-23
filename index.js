@@ -9,6 +9,8 @@ const mongo_url = 'mongodb://127.0.0.1:27017/';
 
 var SOCKET_MAP = new Map();
 
+var PLAYER_MAP = new Map();
+
 var currentgames = new Map();
 
 var waitingforgame = [];
@@ -19,6 +21,8 @@ class ChessGame {
     constructor(user1, user2, coin){
         this.user1 = user1
         this.user2 = user2
+        this.whitedraw = false
+        this.blackdraw = false
         this.turn = 0
         this.gameisover = false;
         this.boardstate = [14,12,13,15,16,13,12,14,
@@ -33,18 +37,22 @@ class ChessGame {
         let newgamedata = {
             type: "newgame", data: {
                 gamecode: chessmatchcounter,
-                perspective: 0
+                perspective: 0,
             }
         };                    
         if(coin < 0.5){
             this.white = user1
             this.black = user2
+            newgamedata.data.white = this.white.split(";")[0]
+            newgamedata.data.black = this.black.split(";")[0]
             SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
             newgamedata.data.perspective = 1;
             SOCKET_MAP.get(user2).send(JSON.stringify(newgamedata));
         }else{
             this.white = user2
             this.black = user1
+            newgamedata.data.white = this.white.split(";")[0]
+            newgamedata.data.black = this.black.split(";")[0]
             SOCKET_MAP.get(user2).send(JSON.stringify(newgamedata));
             newgamedata.data.perspective = 1;
             SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
@@ -52,6 +60,8 @@ class ChessGame {
     }
 
     makeMove(move, pprom, boardstate, hasmovedbs){
+        this.whitedraw = false;
+        this.blackdraw = false;
         this.boardstate = boardstate
         let movedata = {}
         if(pprom){
@@ -118,104 +128,109 @@ class ChessGame {
             let whiteuserobj = await db.collection('users').findOne({username: this.white.split(";")[0]});
             let blackuserobj = await db.collection('users').findOne({username: this.black.split(";")[0]});
 
-            let whitewin;
-            let blackwin;
-            let whiteloss;
-            let blackloss;
-            let whitedraw;
-            let blackdraw;
-            let whiteTOE;
-            let blackTOE;
-            let whitetotalgames;
-            let blacktotalgames;
-            let whiteelodif;
-            let blackelodif;
-            
-            let userwinner;
+            if(whiteuserobj && blackuserobj){
+                let whitewin;
+                let blackwin;
+                let whiteloss;
+                let blackloss;
+                let whitedraw;
+                let blackdraw;
+                let whiteTOE;
+                let blackTOE;
+                let whitetotalgames;
+                let blacktotalgames;
+                let whiteelodif;
+                let blackelodif;
+                
+                let userwinner;
 
-            if(userthatwon === this.white){
-                whitewin = whiteuserobj.wins + 1;
-                whiteloss = whiteuserobj.losses;
-                whitedraw = whiteuserobj.draws;
-                whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
-                blackwin = blackuserobj.wins;
-                blackloss = blackuserobj.losses + 1;
-                blackdraw = blackuserobj.draws;
-                blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
+                if(userthatwon === this.white){
+                    whitewin = whiteuserobj.wins + 1;
+                    whiteloss = whiteuserobj.losses;
+                    whitedraw = whiteuserobj.draws;
+                    whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
+                    blackwin = blackuserobj.wins;
+                    blackloss = blackuserobj.losses + 1;
+                    blackdraw = blackuserobj.draws;
+                    blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
 
-                userwinner = this.white.split(";")[0];
-                console.log("white(" + userwinner + ") won!")
-            }
-            else if(userthatwon === this.black){
-                whitewin = whiteuserobj.wins;
-                whiteloss = whiteuserobj.losses + 1;
-                whitedraw = whiteuserobj.draws;
-                whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
-                blackwin = blackuserobj.wins + 1;
-                blackloss = blackuserobj.losses;
-                blackdraw = blackuserobj.draws;
-                blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
-                userwinner = this.black.split(";")[0];
-                console.log("black(" + userwinner + ") won!")
-            }
-            else if(userthatwon === 0){
-                whitewin = whiteuserobj.wins;
-                whiteloss = whiteuserobj.losses;
-                whitedraw = whiteuserobj.draws + 1;
-                whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
-                blackwin = blackuserobj.wins;
-                blackloss = blackuserobj.losses;
-                blackdraw = blackuserobj.draws + 1;
-                blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
-                userwinner = 0;
-            }
-            whitetotalgames = whiteuserobj.gamesplayed + 1;
-            blacktotalgames = blackuserobj.gamesplayed + 1;
-
-
-            let elowhite = this.calcElo(whiteTOE, whitewin, whiteloss, whitetotalgames);
-            let eloblack = this.calcElo(blackTOE, blackwin, blackloss, blacktotalgames);
-
-            whiteelodif = elowhite - whiteuserobj.elo;
-            blackelodif = eloblack - blackuserobj.elo;
-
-            db.collection("users").updateOne({username: this.white.split(";")[0]}, 
-                                            {$set: {
-                                                wins: whitewin,
-                                                losses: whiteloss,
-                                                draws: whitedraw,
-                                                elo: elowhite,
-                                                gamesplayed: whitetotalgames,
-                                                totalopponentelo: whiteTOE
-                                            }});
-
-            db.collection("users").updateOne({username: this.black.split(";")[0]}, 
-                                            {$set: {
-                                                wins: blackwin,
-                                                losses: blackloss,
-                                                draws: blackdraw,
-                                                elo: eloblack,
-                                                gamesplayed: blacktotalgames,
-                                                totalopponentelo: blackTOE
-                                            }});
-
-            let gameoverdata = {
-                type: "gameover", data: {
-                    reason: reason,
-                    winner: userwinner,
-                    whiteelo: {newelo: elowhite, dif: whiteelodif},
-                    blackelo: {newelo: eloblack, dif: blackelodif}
+                    userwinner = this.white.split(";")[0];
+                    console.log("white(" + userwinner + ") won!")
                 }
-            }
+                else if(userthatwon === this.black){
+                    whitewin = whiteuserobj.wins;
+                    whiteloss = whiteuserobj.losses + 1;
+                    whitedraw = whiteuserobj.draws;
+                    whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
+                    blackwin = blackuserobj.wins + 1;
+                    blackloss = blackuserobj.losses;
+                    blackdraw = blackuserobj.draws;
+                    blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
+                    userwinner = this.black.split(";")[0];
+                    console.log("black(" + userwinner + ") won!")
+                }
+                else if(userthatwon === 0){
+                    whitewin = whiteuserobj.wins;
+                    whiteloss = whiteuserobj.losses;
+                    whitedraw = whiteuserobj.draws + 1;
+                    whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
+                    blackwin = blackuserobj.wins;
+                    blackloss = blackuserobj.losses;
+                    blackdraw = blackuserobj.draws + 1;
+                    blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
+                    userwinner = 0;
+                }
+                whitetotalgames = whiteuserobj.gamesplayed + 1;
+                blacktotalgames = blackuserobj.gamesplayed + 1;
 
 
-            if(SOCKET_MAP.get(this.white)){
-                SOCKET_MAP.get(this.white).send(JSON.stringify(gameoverdata));
+                let elowhite = this.calcElo(whiteTOE, whitewin, whiteloss, whitetotalgames);
+                let eloblack = this.calcElo(blackTOE, blackwin, blackloss, blacktotalgames);
+
+                whiteelodif = elowhite - whiteuserobj.elo;
+                blackelodif = eloblack - blackuserobj.elo;
+
+                db.collection("users").updateOne({username: this.white.split(";")[0]}, 
+                                                {$set: {
+                                                    wins: whitewin,
+                                                    losses: whiteloss,
+                                                    draws: whitedraw,
+                                                    elo: elowhite,
+                                                    gamesplayed: whitetotalgames,
+                                                    totalopponentelo: whiteTOE
+                                                }});
+
+                db.collection("users").updateOne({username: this.black.split(";")[0]}, 
+                                                {$set: {
+                                                    wins: blackwin,
+                                                    losses: blackloss,
+                                                    draws: blackdraw,
+                                                    elo: eloblack,
+                                                    gamesplayed: blacktotalgames,
+                                                    totalopponentelo: blackTOE
+                                                }});
+
+                let gameoverdata = {
+                    type: "gameover", data: {
+                        reason: reason,
+                        winner: userwinner,
+                        whiteelo: {newelo: elowhite, dif: whiteelodif},
+                        blackelo: {newelo: eloblack, dif: blackelodif}
+                    }
+                }
+
+
+                if(SOCKET_MAP.get(this.white)){
+                    SOCKET_MAP.get(this.white).send(JSON.stringify(gameoverdata));
+                }
+                if(SOCKET_MAP.get(this.black)){
+                    SOCKET_MAP.get(this.black).send(JSON.stringify(gameoverdata));
+                }
+                this.gameisover = true;
+            }else{
+                console.log("userdata not found from database");
             }
-            if(SOCKET_MAP.get(this.black)){
-                SOCKET_MAP.get(this.black).send(JSON.stringify(gameoverdata));
-            }
-            this.gameisover = true;
+            
         }
         
     }
@@ -224,6 +239,8 @@ class ChessGame {
         SOCKET_MAP.get(this.user1).send(JSON.stringify({type:"restartgame"}));
         SOCKET_MAP.get(this.user2).send(JSON.stringify({type:"restartgame"}));
         this.turn = 0
+        this.whitedraw = false
+        this.blackdraw = false
         this.gameisover = false;
         this.boardstate = [14,12,13,15,16,13,12,14,
                             11,11,11,11,11,11,11,11,
@@ -233,6 +250,31 @@ class ChessGame {
                             0,0,0,0,0,0,0,0,
                             1,1,1,1,1,1,1,1,
                             4,2,3,5,6,3,2,4]
+    }
+
+    offerDraw(who){
+        if (who === this.white){
+            if(this.whitedraw == false){
+                this.whitedraw = true;
+                SOCKET_MAP.get(this.black).send(JSON.stringify({type:"drawoffered"}));
+            }
+        }
+        else if(who === this.black){
+            if(this.blackdraw == false){
+                this.blackdraw = true;
+                SOCKET_MAP.get(this.white).send(JSON.stringify({type:"drawoffered"}));
+            }
+        }
+    }
+
+}
+
+class Player {
+    constructor(position, curhat, skin, ws){
+        this.position = position;
+        this.curhat = curhat;
+        this.skin = skin;
+        this.ws = ws;
     }
 
 }
@@ -258,6 +300,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                 if(loginresult.data.result == "loginsuccess"){
                     SOCKET_MAP.set(msg["data"]["username"] + ";" + msg["data"]["password"], ws);
                     console.log(`client logged in to ${msg["data"]["username"]}`);
+                    //spawn the player into the world
+                    spawnPlayer(msg["data"]["username"] + ";" + msg["data"]["password"], db, ws);
                 }
             
             }
@@ -267,6 +311,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                 if(result.data.result == "usercreated"){
                     SOCKET_MAP.set(msg["data"]["username"] + ";" + msg["data"]["password"], ws);
                     console.log(`client logged in to ${msg["data"]["username"]}`);
+                    //spawn the player into the world
+                    spawnPlayer(msg["data"]["username"] + ";" + msg["data"]["password"], db, ws);
                 }
             }
 
@@ -318,7 +364,52 @@ MongoClient.connect(mongo_url, (err, client) => {
                     console.log("game not found")
                 }
             }
+            else if (msg["type"] == "offerdraw"){
+                let usergame = currentgames.get(msg.data.gamecode)
+                if(usergame){
+                    usergame.offerDraw(msg.data.who);
+                }
+                else{
+                    console.log("game not found")
+                }
+            }
+            else if (msg["type"] == "drawaccepted"){
+                let usergame = currentgames.get(msg.data.gamecode)
+                if(usergame){
+                    usergame.gameOver("Draw!", 0, db);
+                }
+                else{
+                    console.log("game not found")
+                }
+            }
 
+            //Overworld
+
+            else if (msg["type"] == "worlddatareq"){
+                //user must also give information about self
+                //server updates it
+                let playerref = PLAYER_MAP.get(msg.data.username + ";" + msg.data.password)
+
+                if (playerref){
+                    playerref.position = msg.data.position;
+                    playerref.curhat = msg.data.curhat;
+                    playerref.skin = msg.data.skin;
+                }
+
+                let otherplayerdata = {type: "worlddata", data:{
+                    listofplayers: {}
+                }};
+                PLAYER_MAP.forEach((value, key, _map) => {
+                    let username = key.split(";")[0];
+                    otherplayerdata.data.listofplayers[username] = {
+                        position: value.position,
+                        curhat: value.curhat,
+                        skin: value.skin
+                    };
+                });
+
+                ws.send(JSON.stringify(otherplayerdata));
+            }
         });
 
         ws.on('close', (code, reason) => {
@@ -332,6 +423,17 @@ MongoClient.connect(mongo_url, (err, client) => {
                 if(userwaitingindex > -1){
                     console.log("userwaswaitingforgame")
                     waitingforgame.splice(userwaitingindex, 1);
+                }
+
+                if(PLAYER_MAP.has(user)){
+                    db.collection("users").updateOne({username: user.split(";")[0]}, 
+                                                        {$set: {
+                                                            position: PLAYER_MAP.get(user).position,
+                                                            curhat: PLAYER_MAP.get(user).curhat,
+                                                            skin: PLAYER_MAP.get(user).skin
+                                                        }});
+
+                    PLAYER_MAP.delete(user);
                 }
 
                 currentgames.forEach((value, key, _map) => {
@@ -384,7 +486,7 @@ MongoClient.connect(mongo_url, (err, client) => {
             let user_obj = {
                 username: username,
                 password: password,
-                position: 0,
+                position: [0, 0],
                 curhat: 0,
                 elo: 800,
                 totalopponentelo: 0,
@@ -424,6 +526,25 @@ MongoClient.connect(mongo_url, (err, client) => {
             //300 = password incorrect
             return({type: "loginresult", data: {result: "passwordincorrect"}});
         }
+    }
+
+    async function spawnPlayer(user, db, ws){
+        let userdata = await db.collection('users').findOne({username: user.split(";")[0]});
+        if(userdata){
+            PLAYER_MAP.set(user, new Player(userdata.position, userdata.curhat, userdata.skin, ws));
+
+            let playerspawndata = {type: "spawninworld", data: {
+                position: userdata.position,
+                curhat: userdata.curhat,
+                skin: userdata.skin
+            }};
+
+            SOCKET_MAP.get(user).send(JSON.stringify(playerspawndata));
+        }
+        else{
+            console.log("user could not be accessed from database");
+        }
+        
     }
 
     function isLoggedIn(user){
