@@ -65,7 +65,6 @@ class ChessGame {
         this.boardstate = boardstate
         let movedata = {}
         if(pprom){
-            console.log("syncsent")
             movedata = {
                 type: "sync", data: {
                     boardstate: this.boardstate,
@@ -73,7 +72,6 @@ class ChessGame {
                 }
             };
         }else{
-            console.log("movesent")
 
             movedata = {
                 type: "makemove", data: {
@@ -272,6 +270,9 @@ class ChessGame {
 class Player {
     constructor(position, curhat, skin, ws){
         this.position = position;
+        this.velocity = [0, 0];
+        this.dir = 1;
+        this.animstate = "Idle";
         this.curhat = curhat;
         this.skin = skin;
         this.ws = ws;
@@ -320,7 +321,6 @@ MongoClient.connect(mongo_url, (err, client) => {
                 //username
                 if(isLoggedIn(msg.data.username + ";" + msg.data.password)){
                     waitingforgame.push(msg.data.username + ";" + msg.data.password)
-                    console.log(waitingforgame)
                     if(waitingforgame.length >= 2){
                         let coin = Math.random()
                         currentgames.set(chessmatchcounter, new ChessGame(waitingforgame[0], 
@@ -392,6 +392,9 @@ MongoClient.connect(mongo_url, (err, client) => {
 
                 if (playerref){
                     playerref.position = msg.data.position;
+                    playerref.velocity = msg.data.velocity;
+                    playerref.dir = msg.data.dir;
+                    playerref.animstate = msg.data.animstate;
                     playerref.curhat = msg.data.curhat;
                     playerref.skin = msg.data.skin;
                 }
@@ -399,10 +402,15 @@ MongoClient.connect(mongo_url, (err, client) => {
                 let otherplayerdata = {type: "worlddata", data:{
                     listofplayers: {}
                 }};
+                ///
+                //possibly really bad????
                 PLAYER_MAP.forEach((value, key, _map) => {
                     let username = key.split(";")[0];
                     otherplayerdata.data.listofplayers[username] = {
                         position: value.position,
+                        velocity: value.velocity,
+                        dir: value.dir,
+                        animstate: value.animstate,
                         curhat: value.curhat,
                         skin: value.skin
                     };
@@ -421,7 +429,6 @@ MongoClient.connect(mongo_url, (err, client) => {
                 console.log(user)
                 userwaitingindex = waitingforgame.indexOf(user);
                 if(userwaitingindex > -1){
-                    console.log("userwaswaitingforgame")
                     waitingforgame.splice(userwaitingindex, 1);
                 }
 
@@ -486,7 +493,7 @@ MongoClient.connect(mongo_url, (err, client) => {
             let user_obj = {
                 username: username,
                 password: password,
-                position: [0, 0],
+                position: [0, 450],
                 curhat: 0,
                 elo: 800,
                 totalopponentelo: 0,
