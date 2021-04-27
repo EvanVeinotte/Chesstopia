@@ -6,7 +6,7 @@ const Player = require('./gameobjects').Player
 const getKeyByValue = require('./utils').getKeyByValue
 const isLoggedIn = require('./utils').isLoggedIn
 
-const PORT = 4421
+const PORT = process.env.CHESSPORT
 
 const wss = new Websocket.Server({port: PORT});
 
