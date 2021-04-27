@@ -1,5 +1,11 @@
 const Websocket = require('ws');
 
+const ChessGame = require('./gameobjects').ChessGame
+const Player = require('./gameobjects').Player
+
+const getKeyByValue = require('./utils').getKeyByValue
+const isLoggedIn = require('./utils').isLoggedIn
+
 const PORT = 4421
 
 const wss = new Websocket.Server({port: PORT});
@@ -17,268 +23,7 @@ var waitingforgame = [];
 
 var chessmatchcounter = 100
 
-class ChessGame {
-    constructor(user1, user2, coin){
-        this.user1 = user1
-        this.user2 = user2
-        this.whitedraw = false
-        this.blackdraw = false
-        this.turn = 0
-        this.gameisover = false;
-        this.boardstate = [14,12,13,15,16,13,12,14,
-                            11,11,11,11,11,11,11,11,
-                            0,0,0,0,0,0,0,0,
-                            0,0,0,0,0,0,0,0,
-                            0,0,0,0,0,0,0,0,
-                            0,0,0,0,0,0,0,0,
-                            1,1,1,1,1,1,1,1,
-                            4,2,3,5,6,3,2,4]
 
-        let newgamedata = {
-            type: "newgame", data: {
-                gamecode: chessmatchcounter,
-                perspective: 0,
-            }
-        };                    
-        if(coin < 0.5){
-            this.white = user1
-            this.black = user2
-            newgamedata.data.white = this.white.split(";")[0]
-            newgamedata.data.black = this.black.split(";")[0]
-            SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
-            newgamedata.data.perspective = 1;
-            SOCKET_MAP.get(user2).send(JSON.stringify(newgamedata));
-        }else{
-            this.white = user2
-            this.black = user1
-            newgamedata.data.white = this.white.split(";")[0]
-            newgamedata.data.black = this.black.split(";")[0]
-            SOCKET_MAP.get(user2).send(JSON.stringify(newgamedata));
-            newgamedata.data.perspective = 1;
-            SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
-        }
-    }
-
-    makeMove(move, pprom, boardstate, hasmovedbs){
-        this.whitedraw = false;
-        this.blackdraw = false;
-        this.boardstate = boardstate
-        let movedata = {}
-        if(pprom){
-            movedata = {
-                type: "sync", data: {
-                    boardstate: this.boardstate,
-                    hasmovedbs: hasmovedbs
-                }
-            };
-        }else{
-
-            movedata = {
-                type: "makemove", data: {
-                    move: move
-                }
-            };
-        }
-
-        if(this.turn == 0){
-            SOCKET_MAP.get(this.black).send(JSON.stringify(movedata));
-            this.turn = 10
-        }else{
-            SOCKET_MAP.get(this.white).send(JSON.stringify(movedata));
-            this.turn = 0
-        }
-
-    }
-
-    calcElo(totalopponentelo, wins, losses, totalgames){
-        let elo = (totalopponentelo + 400 * (wins - losses)) / totalgames
-        return elo
-    }
-
-    async gameOver(reason, userthatlost, db){
-        /*
-        game is over if:
-        -checkmate
-        -draw
-        -someone resigns
-        -someone disconnects
-        ////
-        whitewins = 0
-        blackwins = 1
-        draw = 2
-        
-        */
-
-        if(this.gameisover == false){
-
-            let userthatwon;
-
-            if(userthatlost === this.user1){
-                userthatwon = this.user2;
-            }
-            else if(userthatlost === this.user2){
-                userthatwon = this.user1;
-            }
-            else{
-                userthatwon = 0;
-            }
-            
-            let whiteuserobj = await db.collection('users').findOne({username: this.white.split(";")[0]});
-            let blackuserobj = await db.collection('users').findOne({username: this.black.split(";")[0]});
-
-            if(whiteuserobj && blackuserobj){
-                let whitewin;
-                let blackwin;
-                let whiteloss;
-                let blackloss;
-                let whitedraw;
-                let blackdraw;
-                let whiteTOE;
-                let blackTOE;
-                let whitetotalgames;
-                let blacktotalgames;
-                let whiteelodif;
-                let blackelodif;
-                
-                let userwinner;
-
-                if(userthatwon === this.white){
-                    whitewin = whiteuserobj.wins + 1;
-                    whiteloss = whiteuserobj.losses;
-                    whitedraw = whiteuserobj.draws;
-                    whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
-                    blackwin = blackuserobj.wins;
-                    blackloss = blackuserobj.losses + 1;
-                    blackdraw = blackuserobj.draws;
-                    blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
-
-                    userwinner = this.white.split(";")[0];
-                    console.log("white(" + userwinner + ") won!")
-                }
-                else if(userthatwon === this.black){
-                    whitewin = whiteuserobj.wins;
-                    whiteloss = whiteuserobj.losses + 1;
-                    whitedraw = whiteuserobj.draws;
-                    whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
-                    blackwin = blackuserobj.wins + 1;
-                    blackloss = blackuserobj.losses;
-                    blackdraw = blackuserobj.draws;
-                    blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
-                    userwinner = this.black.split(";")[0];
-                    console.log("black(" + userwinner + ") won!")
-                }
-                else if(userthatwon === 0){
-                    whitewin = whiteuserobj.wins;
-                    whiteloss = whiteuserobj.losses;
-                    whitedraw = whiteuserobj.draws + 1;
-                    whiteTOE = whiteuserobj.totalopponentelo + blackuserobj.elo;
-                    blackwin = blackuserobj.wins;
-                    blackloss = blackuserobj.losses;
-                    blackdraw = blackuserobj.draws + 1;
-                    blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
-                    userwinner = 0;
-                }
-                whitetotalgames = whiteuserobj.gamesplayed + 1;
-                blacktotalgames = blackuserobj.gamesplayed + 1;
-
-
-                let elowhite = this.calcElo(whiteTOE, whitewin, whiteloss, whitetotalgames);
-                let eloblack = this.calcElo(blackTOE, blackwin, blackloss, blacktotalgames);
-
-                whiteelodif = elowhite - whiteuserobj.elo;
-                blackelodif = eloblack - blackuserobj.elo;
-
-                db.collection("users").updateOne({username: this.white.split(";")[0]}, 
-                                                {$set: {
-                                                    wins: whitewin,
-                                                    losses: whiteloss,
-                                                    draws: whitedraw,
-                                                    elo: elowhite,
-                                                    gamesplayed: whitetotalgames,
-                                                    totalopponentelo: whiteTOE
-                                                }});
-
-                db.collection("users").updateOne({username: this.black.split(";")[0]}, 
-                                                {$set: {
-                                                    wins: blackwin,
-                                                    losses: blackloss,
-                                                    draws: blackdraw,
-                                                    elo: eloblack,
-                                                    gamesplayed: blacktotalgames,
-                                                    totalopponentelo: blackTOE
-                                                }});
-
-                let gameoverdata = {
-                    type: "gameover", data: {
-                        reason: reason,
-                        winner: userwinner,
-                        whiteelo: {newelo: elowhite, dif: whiteelodif},
-                        blackelo: {newelo: eloblack, dif: blackelodif}
-                    }
-                }
-
-
-                if(SOCKET_MAP.get(this.white)){
-                    SOCKET_MAP.get(this.white).send(JSON.stringify(gameoverdata));
-                }
-                if(SOCKET_MAP.get(this.black)){
-                    SOCKET_MAP.get(this.black).send(JSON.stringify(gameoverdata));
-                }
-                this.gameisover = true;
-            }else{
-                console.log("userdata not found from database");
-            }
-            
-        }
-        
-    }
-
-    newGame(){
-        SOCKET_MAP.get(this.user1).send(JSON.stringify({type:"restartgame"}));
-        SOCKET_MAP.get(this.user2).send(JSON.stringify({type:"restartgame"}));
-        this.turn = 0
-        this.whitedraw = false
-        this.blackdraw = false
-        this.gameisover = false;
-        this.boardstate = [14,12,13,15,16,13,12,14,
-                            11,11,11,11,11,11,11,11,
-                            0,0,0,0,0,0,0,0,
-                            0,0,0,0,0,0,0,0,
-                            0,0,0,0,0,0,0,0,
-                            0,0,0,0,0,0,0,0,
-                            1,1,1,1,1,1,1,1,
-                            4,2,3,5,6,3,2,4]
-    }
-
-    offerDraw(who){
-        if (who === this.white){
-            if(this.whitedraw == false){
-                this.whitedraw = true;
-                SOCKET_MAP.get(this.black).send(JSON.stringify({type:"drawoffered"}));
-            }
-        }
-        else if(who === this.black){
-            if(this.blackdraw == false){
-                this.blackdraw = true;
-                SOCKET_MAP.get(this.white).send(JSON.stringify({type:"drawoffered"}));
-            }
-        }
-    }
-
-}
-
-class Player {
-    constructor(position, curhat, skin, ws){
-        this.position = position;
-        this.velocity = [0, 0];
-        this.dir = 1;
-        this.animstate = "Idle";
-        this.curhat = curhat;
-        this.skin = skin;
-        this.ws = ws;
-    }
-
-}
 
 MongoClient.connect(mongo_url, (err, client) => {
 
@@ -325,7 +70,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                         let coin = Math.random()
                         currentgames.set(chessmatchcounter, new ChessGame(waitingforgame[0], 
                                                                             waitingforgame[1],
-                                                                            coin));
+                                                                            coin, chessmatchcounter));
                         
                         console.log("new game created")
                         waitingforgame = [];
@@ -382,13 +127,23 @@ MongoClient.connect(mongo_url, (err, client) => {
                     console.log("game not found")
                 }
             }
+            else if (msg["type"] == "gameexited"){
+                let usergame = currentgames.get(msg.data.gamecode)
+                if(usergame){
+                    usergame.gameExited(msg.data.username + ";" + msg.data.password, db);
+                }
+                else{
+                    console.log("game not found")
+                }
+            }
 
             //Overworld
 
             else if (msg["type"] == "worlddatareq"){
                 //user must also give information about self
                 //server updates it
-                let playerref = PLAYER_MAP.get(msg.data.username + ";" + msg.data.password)
+                //let playerref = PLAYER_MAP.get(msg.data.username + ";" + msg.data.password)
+                let playerref = PLAYER_MAP.get(msg.data.username)
 
                 if (playerref){
                     playerref.position = msg.data.position;
@@ -402,10 +157,9 @@ MongoClient.connect(mongo_url, (err, client) => {
                 let otherplayerdata = {type: "worlddata", data:{
                     listofplayers: {}
                 }};
-                ///
-                //possibly really bad????
+
                 PLAYER_MAP.forEach((value, key, _map) => {
-                    let username = key.split(";")[0];
+                    let username = key;
                     otherplayerdata.data.listofplayers[username] = {
                         position: value.position,
                         velocity: value.velocity,
@@ -418,7 +172,42 @@ MongoClient.connect(mongo_url, (err, client) => {
 
                 ws.send(JSON.stringify(otherplayerdata));
             }
+
+            else if (msg["type"] == "challengereq"){
+                PLAYER_MAP.get(msg.data.challengee).ws.send(JSON.stringify({
+                    type: "newchallenge",
+                    data: {
+                        challenger: msg.data.challenger,
+                        challengee: msg.data.challengee
+                    }
+                }));
+            }
+
+            else if (msg["type"] == "challengeans"){
+                PLAYER_MAP.get(msg.data.challenger).ws.send(JSON.stringify({
+                    type: "challengeresponse",
+                    data: {
+                        challenger: msg.data.challenger,
+                        challengee: msg.data.challengee,
+                        answer: msg.data.answer
+                    }
+                }));
+
+                if(msg.data.answer === true){
+                    let user1 = getKeyByValue(SOCKET_MAP, PLAYER_MAP.get(msg.data.challenger).ws);
+                    let user2 = getKeyByValue(SOCKET_MAP, PLAYER_MAP.get(msg.data.challengee).ws);
+                    if(isLoggedIn(user1) && isLoggedIn(user2)){
+
+                        let coin = Math.random()
+                        currentgames.set(chessmatchcounter, new ChessGame(user1, user2, coin, chessmatchcounter));
+                        
+                        console.log("new game created");
+                        chessmatchcounter += 1;
+                    }
+                }
+            }
         });
+        
 
         ws.on('close', (code, reason) => {
             let user = getKeyByValue(SOCKET_MAP, ws);
@@ -432,26 +221,28 @@ MongoClient.connect(mongo_url, (err, client) => {
                     waitingforgame.splice(userwaitingindex, 1);
                 }
 
-                if(PLAYER_MAP.has(user)){
-                    db.collection("users").updateOne({username: user.split(";")[0]}, 
+                let username = user.split(";")[0]
+                if(PLAYER_MAP.has(username)){
+                    db.collection("users").updateOne({username: username}, 
                                                         {$set: {
-                                                            position: PLAYER_MAP.get(user).position,
-                                                            curhat: PLAYER_MAP.get(user).curhat,
-                                                            skin: PLAYER_MAP.get(user).skin
+                                                            position: PLAYER_MAP.get(username).position,
+                                                            curhat: PLAYER_MAP.get(username).curhat,
+                                                            skin: PLAYER_MAP.get(username).skin
                                                         }});
 
-                    PLAYER_MAP.delete(user);
+                    PLAYER_MAP.delete(username);
                 }
 
                 currentgames.forEach((value, key, _map) => {
                     if(value.user1 == user){
                         console.log("user1 disconnected from game", )
-                        value.gameOver("opponent disconnected from game", value.user1, db);
+                        //value.gameOver("opponent disconnected from game", value.user1, db);
+                        value.gameExited(value.user1, db);
                         //end the game and make user that didn't disconnect win
                     }
                     else if(value.user2 == user){
                         console.log("user2 disconnected from game")
-                        value.gameOver("opponent disconnected from game", value.user2, db);
+                        value.gameExited(value.user2, db);
                     }
                 });
 
@@ -468,13 +259,7 @@ MongoClient.connect(mongo_url, (err, client) => {
     );
 
 
-    function getKeyByValue(map, searchValue){
-        for(let [key, value] of map){
-            if(value === searchValue){
-                return(key);
-            }
-        }
-    }
+
 
     async function createUser(username, password){
 
@@ -538,7 +323,7 @@ MongoClient.connect(mongo_url, (err, client) => {
     async function spawnPlayer(user, db, ws){
         let userdata = await db.collection('users').findOne({username: user.split(";")[0]});
         if(userdata){
-            PLAYER_MAP.set(user, new Player(userdata.position, userdata.curhat, userdata.skin, ws));
+            PLAYER_MAP.set(user.split(";")[0], new Player(userdata.position, userdata.curhat, userdata.skin, ws));
 
             let playerspawndata = {type: "spawninworld", data: {
                 position: userdata.position,
@@ -554,12 +339,5 @@ MongoClient.connect(mongo_url, (err, client) => {
         
     }
 
-    function isLoggedIn(user){
-        let result = SOCKET_MAP.get(user)
-        if (result){
-            return true;
-        }else{
-            return false;
-        }
-    }
+    
 });
