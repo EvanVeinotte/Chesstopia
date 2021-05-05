@@ -1,11 +1,15 @@
+const { sendIMessage } = require("./utils");
+
 class ChessGame {
-    constructor(user1, user2, coin, code){
+    constructor(user1, user2, coin, code, currentgames, SOCKET_MAP){
         this.code = code;
-        this.user1 = user1
-        this.user2 = user2
-        this.whitedraw = false
-        this.blackdraw = false
-        this.turn = 0
+        this.currentgames = currentgames;
+        this.SOCKET_MAP = SOCKET_MAP;
+        this.user1 = user1;
+        this.user2 = user2;
+        this.whitedraw = false;
+        this.blackdraw = false;
+        this.turn = 0;
         this.gameisover = false;
         this.userexited = false;
         this.userthatexited = null;
@@ -20,7 +24,7 @@ class ChessGame {
 
         let newgamedata = {
             type: "newgame", data: {
-                gamecode: chessmatchcounter,
+                gamecode: code,
                 perspective: 0,
             }
         };                    
@@ -29,17 +33,21 @@ class ChessGame {
             this.black = user2
             newgamedata.data.white = this.white.split(";")[0]
             newgamedata.data.black = this.black.split(";")[0]
-            SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
+            this.SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
+            //sendIMessage(JSON.stringify(newgamedata), this.SOCKET_MAP.get(user1))
             newgamedata.data.perspective = 1;
-            SOCKET_MAP.get(user2).send(JSON.stringify(newgamedata));
+            this.SOCKET_MAP.get(user2).send(JSON.stringify(newgamedata));
+            //sendIMessage(JSON.stringify(newgamedata), this.SOCKET_MAP.get(user2))
         }else{
             this.white = user2
             this.black = user1
             newgamedata.data.white = this.white.split(";")[0]
             newgamedata.data.black = this.black.split(";")[0]
-            SOCKET_MAP.get(user2).send(JSON.stringify(newgamedata));
+            this.SOCKET_MAP.get(user2).send(JSON.stringify(newgamedata));
+            //sendIMessage(JSON.stringify(newgamedata), this.SOCKET_MAP.get(user2))
             newgamedata.data.perspective = 1;
-            SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
+            this.SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
+            //sendIMessage(JSON.stringify(newgamedata), this.SOCKET_MAP.get(user1))
         }
     }
 
@@ -65,10 +73,12 @@ class ChessGame {
         }
 
         if(this.turn == 0){
-            SOCKET_MAP.get(this.black).send(JSON.stringify(movedata));
+            this.SOCKET_MAP.get(this.black).send(JSON.stringify(movedata));
+            //sendIMessage(JSON.stringify(movedata), this.SOCKET_MAP.get(this.black))
             this.turn = 10
         }else{
-            SOCKET_MAP.get(this.white).send(JSON.stringify(movedata));
+            this.SOCKET_MAP.get(this.white).send(JSON.stringify(movedata));
+            //sendIMessage(JSON.stringify(movedata), this.SOCKET_MAP.get(this.white))
             this.turn = 0
         }
 
@@ -202,11 +212,13 @@ class ChessGame {
                 }
 
 
-                if(SOCKET_MAP.get(this.white)){
-                    SOCKET_MAP.get(this.white).send(JSON.stringify(gameoverdata));
+                if(this.SOCKET_MAP.get(this.white)){
+                    this.SOCKET_MAP.get(this.white).send(JSON.stringify(gameoverdata));
+                    //sendIMessage(JSON.stringify(gameoverdata), this.SOCKET_MAP.get(this.white))
                 }
-                if(SOCKET_MAP.get(this.black)){
-                    SOCKET_MAP.get(this.black).send(JSON.stringify(gameoverdata));
+                if(this.SOCKET_MAP.get(this.black)){
+                    this.SOCKET_MAP.get(this.black).send(JSON.stringify(gameoverdata));
+                    //sendIMessage(JSON.stringify(gameoverdata), this.SOCKET_MAP.get(this.black))
                 }
                 this.gameisover = true;
             }else{
@@ -238,10 +250,12 @@ class ChessGame {
                     }
                 }
 
-                if(SOCKET_MAP.get(this.user1) === who){
-                    SOCKET_MAP.get(this.user2).send(JSON.stringify({userexiteddata}));
+                if(this.SOCKET_MAP.get(this.user1) === who){
+                    this.SOCKET_MAP.get(this.user2).send(JSON.stringify(userexiteddata));
+                    //sendIMessage(JSON.stringify(userexiteddata), this.SOCKET_MAP.get(this.user2))
                 }else{
-                    SOCKET_MAP.get(this.user2).send(JSON.stringify({userexiteddata}));
+                    this.SOCKET_MAP.get(this.user1).send(JSON.stringify(userexiteddata));
+                    //sendIMessage(JSON.stringify(userexiteddata), this.SOCKET_MAP.get(this.user1))
                 }
             }
             else{
@@ -252,8 +266,10 @@ class ChessGame {
 
     newGame(){
         if(!this.userexited){
-            SOCKET_MAP.get(this.user1).send(JSON.stringify({type:"restartgame"}));
-            SOCKET_MAP.get(this.user2).send(JSON.stringify({type:"restartgame"}));
+            this.SOCKET_MAP.get(this.user1).send(JSON.stringify({type:"restartgame"}));
+            this.SOCKET_MAP.get(this.user2).send(JSON.stringify({type:"restartgame"}));
+            //sendIMessage(JSON.stringify({type:"restartgame"}), this.SOCKET_MAP.get(this.user1))
+            //sendIMessage(JSON.stringify({type:"restartgame"}), this.SOCKET_MAP.get(this.user2))
             this.turn = 0
             this.whitedraw = false
             this.blackdraw = false
@@ -269,14 +285,20 @@ class ChessGame {
         }
         else{
             if(this.userthatexited == this.user1){
-                SOCKET_MAP.get(this.user2).send(JSON.stringify({type:"opponentexited", data:{
+                this.SOCKET_MAP.get(this.user2).send(JSON.stringify({type:"opponentexited", data:{
                     who: this.user1.split(";")[0]
                 }}));
+                /*sendIMessage(JSON.stringify(JSON.stringify({type:"opponentexited", data:{
+                    who: this.user1.split(";")[0]
+                }})), this.SOCKET_MAP.get(this.user2))*/
             }
             else if(this.userthatexited == this.user2){
-                SOCKET_MAP.get(this.user1).send(JSON.stringify({type:"opponentexited", data:{
+                this.SOCKET_MAP.get(this.user1).send(JSON.stringify({type:"opponentexited", data:{
                     who: this.user2.split(";")[0]
                 }}));
+                /*sendIMessage(JSON.stringify(JSON.stringify({type:"opponentexited", data:{
+                    who: this.user2.split(";")[0]
+                }})), this.SOCKET_MAP.get(this.user1))*/
             }
         }
     }
@@ -286,13 +308,15 @@ class ChessGame {
             if (who === this.white){
                 if(this.whitedraw == false){
                     this.whitedraw = true;
-                    SOCKET_MAP.get(this.black).send(JSON.stringify({type:"drawoffered"}));
+                    this.SOCKET_MAP.get(this.black).send(JSON.stringify({type:"drawoffered"}));
+                    //sendIMessage(JSON.stringify({type:"drawoffered"}), this.SOCKET_MAP.get(this.black))
                 }
             }
             else if(who === this.black){
                 if(this.blackdraw == false){
                     this.blackdraw = true;
-                    SOCKET_MAP.get(this.white).send(JSON.stringify({type:"drawoffered"}));
+                    this.SOCKET_MAP.get(this.white).send(JSON.stringify({type:"drawoffered"}));
+                    //sendIMessage(JSON.stringify({type:"drawoffered"}), this.SOCKET_MAP.get(this.white))
                 }
             }
         }
@@ -300,7 +324,7 @@ class ChessGame {
     }
 
     closeYourself(){
-        currentgames.delete(this.code);
+        this.currentgames.delete(this.code);
     }
 
 }
@@ -313,6 +337,7 @@ class Player {
         this.animstate = "Idle";
         this.curhat = curhat;
         this.skin = skin;
+        this.speech = "";
         this.ws = ws;
     }
 }

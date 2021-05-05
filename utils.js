@@ -6,7 +6,7 @@ function getKeyByValue(map, searchValue){
     }
 }
 
-function isLoggedIn(user){
+function isLoggedIn(user, SOCKET_MAP){
     let result = SOCKET_MAP.get(user)
     if (result){
         return true;
@@ -15,4 +15,14 @@ function isLoggedIn(user){
     }
 }
 
-module.exports = { getKeyByValue, isLoggedIn }
+function sendIMessage(imessage, ws){
+    imessage = JSON.parse(imessage);
+    imessage["repcode"] = repcode;
+    imessage = JSON.stringify(imessage);
+    repcode += 1;
+    ws.send(imessage);
+    ws.send(imessage);
+    ws.send(imessage);
+}
+
+module.exports = { getKeyByValue, isLoggedIn, sendIMessage }
