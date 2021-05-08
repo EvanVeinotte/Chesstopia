@@ -333,6 +333,18 @@ class ChessGame {
         
     }
 
+    offerNewGame(who){
+        
+        if (who === this.white){
+            this.SOCKET_MAP.get(this.black).send(JSON.stringify({type:"offerednewgame"}));
+        }
+        else if(who === this.black){
+            this.SOCKET_MAP.get(this.white).send(JSON.stringify({type:"offerednewgame"}));
+        }
+    
+        
+    }
+
     closeYourself(){
         this.currentgames.delete(this.code);
     }

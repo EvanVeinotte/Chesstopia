@@ -43,22 +43,26 @@ MongoClient.connect(mongo_url, (err, client) => {
 
             let msg = JSON.parse(message);
             let readmessage = true;
-
+            /*
             if(!(msg.repcode == 0)){
                 if(listofrepcodes.includes(msg.repcode)){
                     readmessage = false;
                 }
                 else{
                     listofrepcodes.push(msg.repcode)
-                    console.log("new repcode")
                 }
             }
-            
+            */
             if(readmessage){
             
                 if (msg["type"] == "login"){
                     
                     let loginresult = await login(msg.data.username, msg.data.password);
+                    //check if user is already logged in
+                    if(SOCKET_MAP.has(msg.data.username + ";" + msg.data.password)){
+                        loginresult = {type: "loginresult", data: {result: "useralreadyloggedin"}};
+                    }
+
                     ws.send(JSON.stringify(loginresult));
                     //sendIMessage(JSON.stringify(loginresult), ws);
                     if(loginresult.data.result == "loginsuccess"){
@@ -143,6 +147,15 @@ MongoClient.connect(mongo_url, (err, client) => {
                     let usergame = currentgames.get(msg.data.gamecode)
                     if(usergame){
                         usergame.gameOver("Draw!", 0, db);
+                    }
+                    else{
+                        console.log("game not found")
+                    }
+                }
+                else if (msg["type"] == "offernewgame"){
+                    let usergame = currentgames.get(msg.data.gamecode)
+                    if(usergame){
+                        usergame.offerNewGame(msg.data.who);
                     }
                     else{
                         console.log("game not found")
@@ -233,6 +246,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                                                                                 SOCKET_MAP));
                             
                             console.log("new game created");
+                            console.log(currentgames.keys())
                             chessmatchcounter += 1;
                         }
                     }
