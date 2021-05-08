@@ -88,7 +88,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                         if(waitingforgame.length >= 2){
                             let coin = Math.random()
                             currentgames.set(chessmatchcounter, new ChessGame(waitingforgame[0], 
-                                                                                waitingforgame[1],
+                                                                                waitingforgame[1], 800, 800,
                                                                                 coin, chessmatchcounter, 
                                                                                 currentgames,
                                                                                 SOCKET_MAP));
@@ -219,10 +219,15 @@ MongoClient.connect(mongo_url, (err, client) => {
                     if(msg.data.answer === true){
                         let user1 = getKeyByValue(SOCKET_MAP, PLAYER_MAP.get(msg.data.challenger).ws);
                         let user2 = getKeyByValue(SOCKET_MAP, PLAYER_MAP.get(msg.data.challengee).ws);
+
+                        let rawdata = await db.collection("users").findOne({username: user1.split(";")[0]});
+                        let u1elo = rawdata.elo;
+                        rawdata = await db.collection("users").findOne({username: user2.split(";")[0]});
+                        let u2elo = rawdata.elo;
                         if(isLoggedIn(user1, SOCKET_MAP) && isLoggedIn(user2, SOCKET_MAP)){
 
                             let coin = Math.random()
-                            currentgames.set(chessmatchcounter, new ChessGame(user1, user2, coin,
+                            currentgames.set(chessmatchcounter, new ChessGame(user1, user2, u1elo, u2elo, coin,
                                                                                 chessmatchcounter, 
                                                                                 currentgames,
                                                                                 SOCKET_MAP));

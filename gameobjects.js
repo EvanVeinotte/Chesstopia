@@ -1,7 +1,7 @@
 const { sendIMessage } = require("./utils");
 
 class ChessGame {
-    constructor(user1, user2, coin, code, currentgames, SOCKET_MAP){
+    constructor(user1, user2, u1elo, u2elo, coin, code, currentgames, SOCKET_MAP){
         this.code = code;
         this.currentgames = currentgames;
         this.SOCKET_MAP = SOCKET_MAP;
@@ -21,6 +21,12 @@ class ChessGame {
                             0,0,0,0,0,0,0,0,
                             1,1,1,1,1,1,1,1,
                             4,2,3,5,6,3,2,4]
+        
+        //
+        
+        this.u1elo = u1elo
+        this.u2elo = u2elo
+        
 
         let newgamedata = {
             type: "newgame", data: {
@@ -33,6 +39,8 @@ class ChessGame {
             this.black = user2
             newgamedata.data.white = this.white.split(";")[0]
             newgamedata.data.black = this.black.split(";")[0]
+            newgamedata.data.whiteelo = this.u1elo;
+            newgamedata.data.blackelo = this.u2elo;
             this.SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
             //sendIMessage(JSON.stringify(newgamedata), this.SOCKET_MAP.get(user1))
             newgamedata.data.perspective = 1;
@@ -43,6 +51,8 @@ class ChessGame {
             this.black = user1
             newgamedata.data.white = this.white.split(";")[0]
             newgamedata.data.black = this.black.split(";")[0]
+            newgamedata.data.whiteelo = this.u2elo;
+            newgamedata.data.blackelo = this.u1elo;
             this.SOCKET_MAP.get(user2).send(JSON.stringify(newgamedata));
             //sendIMessage(JSON.stringify(newgamedata), this.SOCKET_MAP.get(user2))
             newgamedata.data.perspective = 1;
