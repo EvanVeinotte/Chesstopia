@@ -7,7 +7,7 @@ const getKeyByValue = require('./utils').getKeyByValue
 const isLoggedIn = require('./utils').isLoggedIn
 const sendIMessage = require('./utils').sendIMessage
 
-const PORT = process.env.CHESSPORT
+const PORT = 4421
 
 const wss = new Websocket.Server({port: PORT});
 
@@ -109,7 +109,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                     console.log("makemove:" + msg.data.gamecode.toString())
                     let usergame = currentgames.get(msg.data.gamecode)
                     if(usergame){
-                        usergame.makeMove(msg.data.move, msg.data.pprom, msg.data.boardstate, msg.data.hasmovedbs);
+                        usergame.makeMove(msg.data.move, msg.data.pprom, msg.data.boardstate, msg.data.hasmovedbs,
+                                            msg.data.mytime);
                     }
                     else{
                         console.log("game not found")
@@ -147,6 +148,15 @@ MongoClient.connect(mongo_url, (err, client) => {
                     let usergame = currentgames.get(msg.data.gamecode)
                     if(usergame){
                         usergame.gameOver("Draw!", 0, db);
+                    }
+                    else{
+                        console.log("game not found")
+                    }
+                }
+                else if (msg["type"] == "stalemate"){
+                    let usergame = currentgames.get(msg.data.gamecode)
+                    if(usergame){
+                        usergame.gameOver("Stalemate!", 0, db);
                     }
                     else{
                         console.log("game not found")
@@ -214,7 +224,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                         type: "newchallenge",
                         data: {
                             challenger: msg.data.challenger,
-                            challengee: msg.data.challengee
+                            challengee: msg.data.challengee,
+                            gametime: msg.data.gametime
                         }
                     }));
                 }
@@ -240,7 +251,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                         if(isLoggedIn(user1, SOCKET_MAP) && isLoggedIn(user2, SOCKET_MAP)){
 
                             let coin = Math.random()
-                            currentgames.set(chessmatchcounter, new ChessGame(user1, user2, u1elo, u2elo, coin,
+                            currentgames.set(chessmatchcounter, new ChessGame(user1, user2, msg.data.gametime,
+                                                                                u1elo, u2elo, coin,
                                                                                 chessmatchcounter, 
                                                                                 currentgames,
                                                                                 SOCKET_MAP));
@@ -317,6 +329,10 @@ MongoClient.connect(mongo_url, (err, client) => {
         if(!username.match("^[A-Za-z0-9]+$") || !password.match("^[A-Za-z0-9]+$")){
             return({type:"usercreationresult", data:{result:"invalidchars"}});
         }
+
+        if(username.length < 4 || username.length > 24 || password.length < 8 || password.length > 32){
+            return({type:"usercreationresult", data:{result:"invalidlength"}});
+        }
         
         let result = await db.collection('users').findOne({username: username});
         //result will be true if username is already taken
@@ -330,26 +346,26 @@ MongoClient.connect(mongo_url, (err, client) => {
                 username: username,
                 password: password,
                 position: [0, 450],
-                curhat: 0,
+                curhat: "no_hat",
                 elo: 800,
                 totalopponentelo: 0,
-                credits: 0,
-                ownedhats: ["no_hat"],
+                topaz: 0,
+                ownedskins: ["naked", "poor_skin"],
+                ownedhats: ["no_hat", "poor_hat"],
                 gamesplayed: 0,
                 wins: 0,
                 losses: 0,
                 draws: 0,
-                skin: 0,
+                skin: "naked",
                 chessset: 0,
-                ownedchesssets: [0]
+                ownedchesssets: ["default"]
             }
             //insert the new user in database
             db.collection('users').insertOne(user_obj, (err, result) => {
                 if(err) throw err;
                 console.log("Created new user " + username);    
             });
-            //1 is code for user creation success
-            //using semicolon split system
+
             return({type:"usercreationresult", data:{result:"usercreated"}});
         }
     }
@@ -389,19 +405,26 @@ MongoClient.connect(mongo_url, (err, client) => {
 
     async function getPlayerPubData(username, db){
         let rawdata = await db.collection("users").findOne({username: username});
-        let pubdata = {
-            username: rawdata.username,
-            position: rawdata.position,
-            curhat: rawdata.curhat,
-            elo: rawdata.elo,
-            credits: rawdata.credits,
-            gamesplayed: rawdata.gamesplayed,
-            wins: rawdata.wins,
-            losses: rawdata.losses,
-            draws: rawdata.draws,
-            skin: rawdata.skin,
-            chessset: rawdata.chessset,
+        let pubdata = {}
+        if(rawdata){
+    
+            pubdata = {
+                username: rawdata.username,
+                position: rawdata.position,
+                curhat: rawdata.curhat,
+                elo: rawdata.elo,
+                topaz: rawdata.topaz,
+                gamesplayed: rawdata.gamesplayed,
+                wins: rawdata.wins,
+                losses: rawdata.losses,
+                draws: rawdata.draws,
+                skin: rawdata.skin,
+                chessset: rawdata.chessset,
+                ownedhats: rawdata.ownedhats,
+                ownedskins: rawdata.ownedskins,
+                ownedchesssets: rawdata.ownedchesssets
 
+            }
         }
         return pubdata;
     }

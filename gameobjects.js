@@ -1,8 +1,9 @@
 const { sendIMessage } = require("./utils");
 
 class ChessGame {
-    constructor(user1, user2, u1elo, u2elo, coin, code, currentgames, SOCKET_MAP){
+    constructor(user1, user2, gametime, u1elo, u2elo, coin, code, currentgames, SOCKET_MAP){
         this.code = code;
+        this.gametime;
         this.currentgames = currentgames;
         this.SOCKET_MAP = SOCKET_MAP;
         this.user1 = user1;
@@ -31,6 +32,7 @@ class ChessGame {
         let newgamedata = {
             type: "newgame", data: {
                 gamecode: code,
+                gametime: gametime,
                 perspective: 0,
             }
         };                    
@@ -61,7 +63,7 @@ class ChessGame {
         }
     }
 
-    makeMove(move, pprom, boardstate, hasmovedbs){
+    makeMove(move, pprom, boardstate, hasmovedbs, mytime){
         this.whitedraw = false;
         this.blackdraw = false;
         this.boardstate = boardstate
@@ -70,14 +72,16 @@ class ChessGame {
             movedata = {
                 type: "sync", data: {
                     boardstate: this.boardstate,
-                    hasmovedbs: hasmovedbs
+                    hasmovedbs: hasmovedbs,
+                    opponenttime: mytime
                 }
             };
         }else{
 
             movedata = {
                 type: "makemove", data: {
-                    move: move
+                    move: move,
+                    opponenttime: mytime
                 }
             };
         }
@@ -260,7 +264,7 @@ class ChessGame {
                     }
                 }
 
-                if(this.SOCKET_MAP.get(this.user1) === who){
+                if(this.user1 === who){
                     this.SOCKET_MAP.get(this.user2).send(JSON.stringify(userexiteddata));
                     //sendIMessage(JSON.stringify(userexiteddata), this.SOCKET_MAP.get(this.user2))
                 }else{
@@ -335,11 +339,13 @@ class ChessGame {
 
     offerNewGame(who){
         
-        if (who === this.white){
-            this.SOCKET_MAP.get(this.black).send(JSON.stringify({type:"offerednewgame"}));
-        }
-        else if(who === this.black){
-            this.SOCKET_MAP.get(this.white).send(JSON.stringify({type:"offerednewgame"}));
+        if(this.userexited === false){
+            if (who === this.white){
+                this.SOCKET_MAP.get(this.black).send(JSON.stringify({type:"offerednewgame"}));
+            }
+            else if(who === this.black){
+                this.SOCKET_MAP.get(this.white).send(JSON.stringify({type:"offerednewgame"}));
+            }
         }
     
         
