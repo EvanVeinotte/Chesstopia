@@ -150,6 +150,9 @@ class ChessGame {
                 
                 let userwinner;
 
+                let whiteearnedtopaz = 0;
+                let blackearnedtopaz = 0;
+
                 if(userthatwon === this.white){
                     whitewin = whiteuserobj.wins + 1;
                     whiteloss = whiteuserobj.losses;
@@ -162,6 +165,8 @@ class ChessGame {
 
                     userwinner = this.white.split(";")[0];
                     console.log("white(" + userwinner + ") won!")
+
+                    whiteearnedtopaz = Math.floor((blackuserobj.elo/800) * 100);
                 }
                 else if(userthatwon === this.black){
                     whitewin = whiteuserobj.wins;
@@ -172,8 +177,11 @@ class ChessGame {
                     blackloss = blackuserobj.losses;
                     blackdraw = blackuserobj.draws;
                     blackTOE = blackuserobj.totalopponentelo + whiteuserobj.elo;
+
                     userwinner = this.black.split(";")[0];
                     console.log("black(" + userwinner + ") won!")
+
+                    blackearnedtopaz = Math.floor((whiteuserobj.elo/800) * 100);
                 }
                 else if(userthatwon === 0){
                     whitewin = whiteuserobj.wins;
@@ -194,7 +202,7 @@ class ChessGame {
                 let eloblack = this.calcElo(blackTOE, blackwin, blackloss, blacktotalgames);
 
                 whiteelodif = elowhite - whiteuserobj.elo;
-                blackelodif = eloblack - blackuserobj.elo;
+                blackelodif = eloblack - blackuserobj.elo;                
 
                 db.collection("users").updateOne({username: this.white.split(";")[0]}, 
                                                 {$set: {
@@ -203,7 +211,8 @@ class ChessGame {
                                                     draws: whitedraw,
                                                     elo: elowhite,
                                                     gamesplayed: whitetotalgames,
-                                                    totalopponentelo: whiteTOE
+                                                    totalopponentelo: whiteTOE,
+                                                    topaz: whiteearnedtopaz + whiteuserobj.topaz
                                                 }});
 
                 db.collection("users").updateOne({username: this.black.split(";")[0]}, 
@@ -213,7 +222,8 @@ class ChessGame {
                                                     draws: blackdraw,
                                                     elo: eloblack,
                                                     gamesplayed: blacktotalgames,
-                                                    totalopponentelo: blackTOE
+                                                    totalopponentelo: blackTOE,
+                                                    topaz: blackearnedtopaz + blackuserobj.topaz
                                                 }});
 
                 let gameoverdata = {
@@ -221,7 +231,9 @@ class ChessGame {
                         reason: reason,
                         winner: userwinner,
                         whiteelo: {newelo: elowhite, dif: whiteelodif},
-                        blackelo: {newelo: eloblack, dif: blackelodif}
+                        whitetopaz: whiteearnedtopaz,
+                        blackelo: {newelo: eloblack, dif: blackelodif},
+                        blacktopaz: blackearnedtopaz
                     }
                 }
 

@@ -14,6 +14,8 @@ const wss = new Websocket.Server({port: PORT});
 const { MongoClient } = require('mongodb');
 const mongo_url = 'mongodb://127.0.0.1:27017/';
 
+var cosmeticitems = {hats: {}, skins: {}, chesssets: {}};
+
 var SOCKET_MAP = new Map();
 
 var PLAYER_MAP = new Map();
@@ -260,6 +262,49 @@ MongoClient.connect(mongo_url, (err, client) => {
                             console.log("new game created");
                             console.log(currentgames.keys())
                             chessmatchcounter += 1;
+                        }
+                    }
+                }
+
+                else if (msg["type"] == "purchasecosmetic"){
+
+                    let playertopaz = await getPlayerPubData(msg.data.username, db).topaz;
+                    //not doing a response if it costs too much because that should never happen
+                    //because the client side will only send this if player has enough money
+                    if(msg.data.itemtype == "hats"){
+                        let hat = await db.collection("hats").findOne({hatname: msg.data.itemname})
+                        if(hat){
+                            if(hat.price <= playertopaz){
+                                db.collection("users").updateOne({username: msg.data.username}, 
+                                                        {$push: {ownedhats: msg.data.itemname},
+                                                        $set: {topaz: playertopaz - hat.price}});
+                                db.collection("hats").updateOne({hatname: msg.data.itemname}, 
+                                                        {$set: {howmany: hat.howmany + 1}})
+                            }
+                        }
+                    }
+                    else if(msg.data.itemtype == "skins"){
+                        let skin = await db.collection("skins").findOne({skinname: msg.data.itemname})
+                        if(skin){
+                            if(skin.price <= playertopaz){
+                                db.collection("users").updateOne({username: msg.data.username}, 
+                                                        {$push: {ownedskins: msg.data.itemname},
+                                                        $set: {topaz: playertopaz - skin.price}});
+                                db.collection("skins").updateOne({skinname: msg.data.itemname}, 
+                                                        {$set: {howmany: skin.howmany + 1}})
+                            }
+                        }
+                    }
+                    else if(msg.data.itemtype == "chesssets"){
+                        let chessset = await db.collection("chesssets").findOne({chesssetname: msg.data.itemname})
+                        if(chessset){
+                            if(chessset.price <= playertopaz){
+                                db.collection("users").updateOne({username: msg.data.username}, 
+                                                        {$push: {ownedchesssets: msg.data.itemname},
+                                                        $set: {topaz: playertopaz - chessset.price}});
+                                db.collection("chesssets").updateOne({chesssetname: msg.data.itemname}, 
+                                                        {$set: {howmany: chessset.howmany + 1}})
+                            }
                         }
                     }
                 }
