@@ -182,6 +182,15 @@ MongoClient.connect(mongo_url, (err, client) => {
                         console.log("game not found")
                     }
                 }
+                else if(msg["type"] == "newchesschatmessage"){
+                    let usergame = currentgames.get(msg.data.gamecode)
+                    if(usergame){
+                        usergame.sendNewChatMessage(msg.data.txtmsg, msg.data.username);
+                    }
+                    else{
+                        console.log("game not found")
+                    }
+                }
 
                 //Overworld
 
@@ -199,6 +208,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                         playerref.curhat = msg.data.curhat;
                         playerref.skin = msg.data.skin;
                         playerref.speech = msg.data.speech;
+                        playerref.eyesopen = msg.data.eyesopen;
                     }
 
                     let otherplayerdata = {type: "worlddata", data:{
@@ -214,7 +224,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                             animstate: value.animstate,
                             curhat: value.curhat,
                             skin: value.skin,
-                            speech: value.speech
+                            speech: value.speech,
+                            eyesopen: msg.data.eyesopen
                         };
                     });
 
@@ -268,13 +279,20 @@ MongoClient.connect(mongo_url, (err, client) => {
 
                 else if (msg["type"] == "purchasecosmetic"){
 
-                    let playertopaz = await getPlayerPubData(msg.data.username, db).topaz;
+                    console.log("cosmeticpurchasemade")
+                    let playerobj = await getPlayerPubData(msg.data.username, db);
+                    let playertopaz = playerobj.topaz;
                     //not doing a response if it costs too much because that should never happen
                     //because the client side will only send this if player has enough money
                     if(msg.data.itemtype == "hats"){
+                        console.log("lvl1")
                         let hat = await db.collection("hats").findOne({hatname: msg.data.itemname})
                         if(hat){
+                            console.log("lvl2")
+                            console.log(hat.price)
+                            console.log(playertopaz)
                             if(hat.price <= playertopaz){
+                                console.log("lvl3")
                                 db.collection("users").updateOne({username: msg.data.username}, 
                                                         {$push: {ownedhats: msg.data.itemname},
                                                         $set: {topaz: playertopaz - hat.price}});

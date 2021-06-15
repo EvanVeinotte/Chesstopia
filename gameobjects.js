@@ -254,6 +254,22 @@ class ChessGame {
         }   
     }
 
+    sendNewChatMessage(txtmsg, username){
+        let chatmessagedata = {
+            type: "newchesschat",
+            data: {
+                txtmsg: username + ":\n" + txtmsg
+            }
+        };
+
+        if(this.SOCKET_MAP.get(this.white)){
+            this.SOCKET_MAP.get(this.white).send(JSON.stringify(chatmessagedata));
+        }
+        if(this.SOCKET_MAP.get(this.black)){
+            this.SOCKET_MAP.get(this.black).send(JSON.stringify(chatmessagedata));
+        }
+    }
+
     gameExited(who, db){
 
         if(!this.gameisover){

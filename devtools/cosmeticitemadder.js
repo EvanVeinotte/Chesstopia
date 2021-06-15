@@ -45,7 +45,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                         process.exit(0)
                     }
 
-                    await db.collection(itemtype).insertOne(insertDoc)
+                    db.collection(itemtype).insertOne(insertDoc)
 
                     rl.question("Would you like to go again?(y/n)", (answer) => {
                         if(answer != "y"){
