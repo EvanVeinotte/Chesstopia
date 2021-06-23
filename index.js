@@ -389,7 +389,7 @@ MongoClient.connect(mongo_url, (err, client) => {
 
     async function createUser(username, password){
 
-        if(!username.match("^[A-Za-z0-9]+$") || !password.match("^[A-Za-z0-9]+$")){
+        if(!username.match("^[A-Za-z0-9_]+$") || !password.match("^[A-Za-z0-9_]+$")){
             return({type:"usercreationresult", data:{result:"invalidchars"}});
         }
 
