@@ -87,6 +87,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                     }
                 }
 
+                //isn't used anymore
                 else if (msg["type"] == "newgame"){
                     //username
                     if(isLoggedIn(msg.data.username + ";" + msg.data.password, SOCKET_MAP)){
@@ -105,6 +106,24 @@ MongoClient.connect(mongo_url, (err, client) => {
                         }
                     }
                     
+                }
+
+                else if (msg["type"] == "reqspec"){
+                    console.log(msg.data.username + " started spectating " + msg.data.gamecode.toString())
+                    let usergame = currentgames.get(msg.data.gamecode)
+                    if(usergame){
+                        usergame.fetchTimeForSpec(msg.data.username + ";" + msg.data.password);
+                    }
+                    else{
+                        PLAYER_MAP.get(msg.data.username).ws.send(JSON.stringify({type:"specinvalidroomcode"}))
+                    }
+                }
+
+                else if (msg["type"] == "servespectimes"){
+                    let usergame = currentgames.get(msg.data.gamecode)
+                    if(usergame){
+                        usergame.spectatorJoins(msg.data.whitetime, msg.data.blacktime);
+                    }
                 }
 
                 else if (msg["type"] == "makemove"){
@@ -225,11 +244,63 @@ MongoClient.connect(mongo_url, (err, client) => {
                             curhat: value.curhat,
                             skin: value.skin,
                             speech: value.speech,
-                            eyesopen: msg.data.eyesopen
+                            eyesopen: value.eyesopen
                         };
                     });
 
                     ws.send(JSON.stringify(otherplayerdata));
+                }
+
+                else if (msg["type"] == "sendpm"){
+                    let receiver = await db.collection("users").findOne({username: msg.data.receiver})
+                    if(receiver){
+                        if(receiver.blocks){
+                            if(!(receiver.blocks.includes(msg.data.pm.signature))){
+                                addPM(receiver, msg.data.pm)
+                            }
+                        }
+                        else{
+                            addPM(receiver, msg.data.pm)
+                        }
+                        
+                    }
+                    else{
+                        ws.send(JSON.stringify({type: "pmfailed", data: {failedusername: msg.data.receiver}}));
+                    }
+                }
+                else if (msg["type"] == "readpm"){
+                    let result = await db.collection("users").findOne({username: msg.data.username,
+                                                                        password: msg.data.password});
+                    if(result){
+                        if(result.hasOwnProperty("privatemessages")){
+                            let oldestpm = result.privatemessages[0];
+                            if(oldestpm){
+                                let islastpm = false;
+                                if(result.privatemessages.length <= 1){
+                                    islastpm = true
+                                }
+
+                                ws.send(JSON.stringify({type: "pminfo", data: {pm: oldestpm, islastpm: islastpm}}));
+                                db.collection("users").updateOne({username: msg.data.username},{$pop: {privatemessages: -1}});
+                            }
+                            else{
+                                ws.send(JSON.stringify({type: "pminfo", data: {pm: "nopm"}}));
+                            }
+                        }
+                        else{
+                            ws.send(JSON.stringify({type: "pminfo", data: {pm: "nopm"}}));
+                        }
+                        
+                        
+                    }
+                    else{
+                        console.log("A user with wrong username or password tried to read a PM")
+                    }
+                }
+                else if (msg["type"] == "blocksomeone"){
+                    db.collection("users").updateOne({username: msg.data.username},{
+                        $push: {blocks: msg.data.blockee}
+                    });
                 }
 
                 else if (msg["type"] == "challengereq"){
@@ -301,6 +372,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                             }
                         }
                     }
+
+
                     else if(msg.data.itemtype == "skins"){
                         let skin = await db.collection("skins").findOne({skinname: msg.data.itemname})
                         if(skin){
@@ -355,7 +428,6 @@ MongoClient.connect(mongo_url, (err, client) => {
                                                             curhat: PLAYER_MAP.get(username).curhat,
                                                             skin: PLAYER_MAP.get(username).skin
                                                         }});
-                    console.log(PLAYER_MAP.get(username).skin);
                     PLAYER_MAP.delete(username);
                 }
 
@@ -421,13 +493,12 @@ MongoClient.connect(mongo_url, (err, client) => {
                 draws: 0,
                 skin: "naked",
                 chessset: 0,
-                ownedchesssets: ["default"]
+                ownedchesssets: ["default"],
+                privatemessages: []
             }
             //insert the new user in database
-            db.collection('users').insertOne(user_obj, (err, result) => {
-                if(err) throw err;
-                console.log("Created new user " + username);    
-            });
+            await db.collection('users').insertOne(user_obj);
+            console.log("user " + username + " created");
 
             return({type:"usercreationresult", data:{result:"usercreated"}});
         }
@@ -454,6 +525,13 @@ MongoClient.connect(mongo_url, (err, client) => {
         let userdata = await getPlayerPubData(user.split(";")[0], db);
         if(userdata){
             PLAYER_MAP.set(user.split(";")[0], new Player(userdata.position, userdata.curhat, userdata.skin, ws));
+
+            let userobj = await db.collection("users").findOne({username: user.split(";")[0]});
+            if(userobj.privatemessages){
+                userdata["haspms"] = !(userobj.privatemessages.length === 0);
+            }else{
+                userdata["haspms"] = false;
+            }
 
             let playerspawndata = {type: "spawninworld", data: userdata};
 
@@ -490,6 +568,16 @@ MongoClient.connect(mongo_url, (err, client) => {
             }
         }
         return pubdata;
+    }
+
+    async function addPM(receiver, pm){
+        db.collection("users").updateOne({username: receiver.username},{
+            $push: {privatemessages: pm}
+        });
+
+        if(PLAYER_MAP.has(receiver.username)){
+            PLAYER_MAP.get(receiver.username).ws.send(JSON.stringify({type:"newpm"}))
+        }
     }
 
     async function getPlayerLiveData(username, PLAYER_MAP){

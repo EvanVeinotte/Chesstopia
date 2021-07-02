@@ -3,11 +3,14 @@ const { sendIMessage } = require("./utils");
 class ChessGame {
     constructor(user1, user2, gametime, u1elo, u2elo, coin, code, currentgames, SOCKET_MAP){
         this.code = code;
+        this.coin = coin;
         this.gametime;
         this.currentgames = currentgames;
         this.SOCKET_MAP = SOCKET_MAP;
         this.user1 = user1;
         this.user2 = user2;
+        this.waitingspectators = [];
+        this.spectators = [];
         this.whitedraw = false;
         this.blackdraw = false;
         this.turn = 0;
@@ -34,6 +37,7 @@ class ChessGame {
                 gamecode: code,
                 gametime: gametime,
                 perspective: 0,
+                isspectator: false,
             }
         };                    
         if(coin < 0.5){
@@ -60,6 +64,64 @@ class ChessGame {
             newgamedata.data.perspective = 1;
             this.SOCKET_MAP.get(user1).send(JSON.stringify(newgamedata));
             //sendIMessage(JSON.stringify(newgamedata), this.SOCKET_MAP.get(user1))
+        }
+    }
+
+    fetchTimeForSpec(spectator){
+        this.waitingspectators.push(spectator)
+        this.SOCKET_MAP.get(this.white).send(JSON.stringify({type:"fetchtime"}));
+    }
+
+    spectatorJoins(whitetime, blacktime, ufmm, ofmm){
+        let spectator
+        for (let i = 0; i < this.waitingspectators.length; i++){
+            spectator = this.waitingspectators[i];
+
+            this.spectators.push(spectator);
+
+            let newgamedata = {
+                type: "newgame", data: {
+                    gamecode: code,
+                    gametime: gametime,
+                    perspective: 0,
+                    isspectator: true,
+                    //add both player times
+                    whitetime: whitetime,
+                    blacktime: blacktime,
+                    ufmm: ufmm,
+                    ofmm: ofmm
+                }
+            };
+
+            if(this.coin < 0.5){
+                this.white = user1
+                this.black = user2
+                newgamedata.data.white = this.white.split(";")[0]
+                newgamedata.data.black = this.black.split(";")[0]
+                newgamedata.data.whiteelo = this.u1elo;
+                newgamedata.data.blackelo = this.u2elo;
+                this.SOCKET_MAP.get(spectator).send(JSON.stringify(newgamedata));
+            }else{
+                this.white = user2
+                this.black = user1
+                newgamedata.data.white = this.white.split(";")[0]
+                newgamedata.data.black = this.black.split(";")[0]
+                newgamedata.data.whiteelo = this.u2elo;
+                newgamedata.data.blackelo = this.u1elo;
+                this.SOCKET_MAP.get(spectator).send(JSON.stringify(newgamedata));
+            }
+        }
+        this.waitingspectators = [];
+
+    }
+
+
+    syncSpectators(newboardstate, newtime){
+        for (let i=0; i < this.spectators.length; i++){
+            this.SOCKET_MAP.get(this.spectators[i]).send(JSON.stringify({type:"syncspec", data:{
+                newboardstate: newboardstate,
+                newtime: newtime,
+            }}));
         }
     }
 
@@ -95,6 +157,8 @@ class ChessGame {
             //sendIMessage(JSON.stringify(movedata), this.SOCKET_MAP.get(this.white))
             this.turn = 0
         }
+
+        this.syncSpectators(boardstate, mytime);
 
     }
 
@@ -258,7 +322,7 @@ class ChessGame {
         let chatmessagedata = {
             type: "newchesschat",
             data: {
-                txtmsg: username + ":\n" + txtmsg
+                txtmsg: username + "\n" + txtmsg
             }
         };
 
@@ -394,6 +458,7 @@ class Player {
         this.curhat = curhat;
         this.skin = skin;
         this.speech = "";
+        this.eyesopen = false;
         this.ws = ws;
     }
 }
