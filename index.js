@@ -122,7 +122,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                 else if (msg["type"] == "servespectimes"){
                     let usergame = currentgames.get(msg.data.gamecode)
                     if(usergame){
-                        usergame.spectatorJoins(msg.data.whitetime, msg.data.blacktime);
+                        usergame.spectatorJoins(msg.data.whitetime, msg.data.blacktime,
+                                                    msg.data.ufmm, msg.data.ofmm);
                     }
                 }
 
@@ -303,6 +304,12 @@ MongoClient.connect(mongo_url, (err, client) => {
                     });
                 }
 
+                else if (msg["type"] == "settingsupdate"){
+                    db.collection("users").updateOne({username: msg.data.username},{
+                        $set: {usersettings: msg.data.newsettings}
+                    });
+                }
+
                 else if (msg["type"] == "challengereq"){
                     PLAYER_MAP.get(msg.data.challengee).ws.send(JSON.stringify({
                         type: "newchallenge",
@@ -431,6 +438,9 @@ MongoClient.connect(mongo_url, (err, client) => {
                     PLAYER_MAP.delete(username);
                 }
 
+                //this is terrible and should be fixed someday
+                //you could probably add what game player is currently in in PLAYERMAP and then
+                //when they disconnect just gameexit them using that reference
                 currentgames.forEach((value, key, _map) => {
                     if(value.user1 == user){
                         console.log("user1 disconnected from game", )
@@ -441,6 +451,9 @@ MongoClient.connect(mongo_url, (err, client) => {
                     else if(value.user2 == user){
                         console.log("user2 disconnected from game")
                         value.gameExited(value.user2, db);
+                    }
+                    if(value.spectators.includes(user)){
+                        value.gameExited(user, db);
                     }
                 });
 
@@ -494,7 +507,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                 skin: "naked",
                 chessset: 0,
                 ownedchesssets: ["default"],
-                privatemessages: []
+                privatemessages: [],
+                usersettings: [0, 0]
             }
             //insert the new user in database
             await db.collection('users').insertOne(user_obj);
@@ -548,6 +562,9 @@ MongoClient.connect(mongo_url, (err, client) => {
         let rawdata = await db.collection("users").findOne({username: username});
         let pubdata = {}
         if(rawdata){
+            if(!rawdata.hasOwnProperty('usersettings')){
+                rawdata['usersettings'] = [0,0]
+            }
     
             pubdata = {
                 username: rawdata.username,
@@ -563,7 +580,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                 chessset: rawdata.chessset,
                 ownedhats: rawdata.ownedhats,
                 ownedskins: rawdata.ownedskins,
-                ownedchesssets: rawdata.ownedchesssets
+                ownedchesssets: rawdata.ownedchesssets,
+                usersettings: rawdata.usersettings
 
             }
         }

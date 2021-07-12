@@ -4,7 +4,7 @@ class ChessGame {
     constructor(user1, user2, gametime, u1elo, u2elo, coin, code, currentgames, SOCKET_MAP){
         this.code = code;
         this.coin = coin;
-        this.gametime;
+        this.gametime = gametime;
         this.currentgames = currentgames;
         this.SOCKET_MAP = SOCKET_MAP;
         this.user1 = user1;
@@ -77,39 +77,44 @@ class ChessGame {
         for (let i = 0; i < this.waitingspectators.length; i++){
             spectator = this.waitingspectators[i];
 
-            this.spectators.push(spectator);
+            if(!this.spectators.includes(spectator)){
+                this.spectators.push(spectator);
+            }
 
             let newgamedata = {
                 type: "newgame", data: {
-                    gamecode: code,
-                    gametime: gametime,
+                    gamecode: this.code,
+                    gametime: this.gametime,
                     perspective: 0,
                     isspectator: true,
                     //add both player times
                     whitetime: whitetime,
                     blacktime: blacktime,
                     ufmm: ufmm,
-                    ofmm: ofmm
+                    ofmm: ofmm,
+                    newboardstate: this.boardstate,
+                    turn: this.turn
                 }
             };
 
             if(this.coin < 0.5){
-                this.white = user1
-                this.black = user2
+                this.white = this.user1
+                this.black = this.user2
                 newgamedata.data.white = this.white.split(";")[0]
                 newgamedata.data.black = this.black.split(";")[0]
                 newgamedata.data.whiteelo = this.u1elo;
                 newgamedata.data.blackelo = this.u2elo;
                 this.SOCKET_MAP.get(spectator).send(JSON.stringify(newgamedata));
             }else{
-                this.white = user2
-                this.black = user1
+                this.white = this.user2
+                this.black = this.user1
                 newgamedata.data.white = this.white.split(";")[0]
                 newgamedata.data.black = this.black.split(";")[0]
                 newgamedata.data.whiteelo = this.u2elo;
                 newgamedata.data.blackelo = this.u1elo;
                 this.SOCKET_MAP.get(spectator).send(JSON.stringify(newgamedata));
             }
+            
         }
         this.waitingspectators = [];
 
@@ -310,6 +315,11 @@ class ChessGame {
                     this.SOCKET_MAP.get(this.black).send(JSON.stringify(gameoverdata));
                     //sendIMessage(JSON.stringify(gameoverdata), this.SOCKET_MAP.get(this.black))
                 }
+                for (let i=0; i<this.spectators.length; i++){
+                    if(this.SOCKET_MAP.get(this.spectators[i])){
+                        this.SOCKET_MAP.get(this.spectators[i]).send(JSON.stringify(gameoverdata));
+                    }
+                }
                 this.gameisover = true;
             }else{
                 console.log("userdata not found from database");
@@ -326,47 +336,73 @@ class ChessGame {
             }
         };
 
-        if(this.SOCKET_MAP.get(this.white)){
-            this.SOCKET_MAP.get(this.white).send(JSON.stringify(chatmessagedata));
+        //if one of the players send, send to players
+        if(username == this.user1.split(";")[0] || username == this.user2.split(";")[0]){
+            if(this.SOCKET_MAP.get(this.white)){
+                this.SOCKET_MAP.get(this.white).send(JSON.stringify(chatmessagedata));
+            }
+            if(this.SOCKET_MAP.get(this.black)){
+                this.SOCKET_MAP.get(this.black).send(JSON.stringify(chatmessagedata));
+            }
         }
-        if(this.SOCKET_MAP.get(this.black)){
-            this.SOCKET_MAP.get(this.black).send(JSON.stringify(chatmessagedata));
+        for (let i=0; i<this.spectators.length; i++){
+            if(this.SOCKET_MAP.get(this.spectators[i])){
+                this.SOCKET_MAP.get(this.spectators[i]).send(JSON.stringify(chatmessagedata));
+            }
         }
+
+
+
     }
 
     gameExited(who, db){
 
-        if(!this.gameisover){
-            if(this.userexited === false){
-                this.userexited = true;
-                this.userthatexited = who
-                let exitstring = who.split(";")[0] + " exited the game!";
-                this.gameOver(exitstring, who, db);
-            }
-        }
-        else{
-            if(this.userexited === false){
-                this.userexited = true;
-                this.userthatexited = who;
-
-                let userexiteddata = {
-                    type: "opponentexited",
-                    data: {
-                        who: who.split(";")[0]
-                    }
-                }
-
-                if(this.user1 === who){
-                    this.SOCKET_MAP.get(this.user2).send(JSON.stringify(userexiteddata));
-                    //sendIMessage(JSON.stringify(userexiteddata), this.SOCKET_MAP.get(this.user2))
-                }else{
-                    this.SOCKET_MAP.get(this.user1).send(JSON.stringify(userexiteddata));
-                    //sendIMessage(JSON.stringify(userexiteddata), this.SOCKET_MAP.get(this.user1))
+        if(who == this.user1 || who == this.user2){
+            if(!this.gameisover){
+                if(this.userexited === false){
+                    this.userexited = true;
+                    this.userthatexited = who
+                    let exitstring = who.split(";")[0] + " exited the game!";
+                    this.gameOver(exitstring, who, db);
                 }
             }
             else{
-                this.closeYourself();
+                if(this.userexited === false){
+                    this.userexited = true;
+                    this.userthatexited = who;
+    
+                    let userexiteddata = {
+                        type: "opponentexited",
+                        data: {
+                            who: who.split(";")[0]
+                        }
+                    }
+    
+                    if(this.user1 === who){
+                        this.SOCKET_MAP.get(this.user2).send(JSON.stringify(userexiteddata));
+                        //sendIMessage(JSON.stringify(userexiteddata), this.SOCKET_MAP.get(this.user2))
+                    }else{
+                        this.SOCKET_MAP.get(this.user1).send(JSON.stringify(userexiteddata));
+                        //sendIMessage(JSON.stringify(userexiteddata), this.SOCKET_MAP.get(this.user1))
+                    }
+
+                    for (let i=0; i<this.spectators.length; i++){
+                        if(this.SOCKET_MAP.get(this.spectators[i])){
+                            this.SOCKET_MAP.get(this.spectators[i]).send(JSON.stringify(userexiteddata));
+                        }
+                    }
+                }
+                else{
+                    this.closeYourself();
+                }
             }
+        }
+        else{
+            const idx = this.spectators.indexOf(who);
+            if (idx > -1) {
+                this.spectators.splice(idx, 1);
+            }
+            console.log(this.spectators)
         }
     }
 
@@ -388,6 +424,13 @@ class ChessGame {
                                 0,0,0,0,0,0,0,0,
                                 1,1,1,1,1,1,1,1,
                                 4,2,3,5,6,3,2,4]
+            
+            for (let i=0; i<this.spectators.length; i++){
+                if(this.SOCKET_MAP.get(this.spectators[i])){
+                    this.SOCKET_MAP.get(this.spectators[i]).send(JSON.stringify({type:"restartgame"}));
+                }
+            }
+            
         }
         else{
             if(this.userthatexited == this.user1){
