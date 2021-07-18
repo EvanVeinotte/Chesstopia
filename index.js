@@ -1,20 +1,23 @@
 const Websocket = require('ws');
+const dgram = require('dgram');
 
 const ChessGame = require('./gameobjects').ChessGame
 const Player = require('./gameobjects').Player
 
 const getKeyByValue = require('./utils').getKeyByValue
 const isLoggedIn = require('./utils').isLoggedIn
-const sendIMessage = require('./utils').sendIMessage
+//const sendIMessage = require('./utils').sendIMessage
 
-const PORT = 4421
+const VERSION = "0.0.9";
+
+const PORT = 4421;
+const UDP_PORT = 4422;
 
 const wss = new Websocket.Server({port: PORT});
+const udps = dgram.createSocket('udp4');
 
 const { MongoClient } = require('mongodb');
 const mongo_url = 'mongodb://127.0.0.1:27017/';
-
-var cosmeticitems = {hats: {}, skins: {}, chesssets: {}};
 
 var SOCKET_MAP = new Map();
 
@@ -59,7 +62,7 @@ MongoClient.connect(mongo_url, (err, client) => {
             
                 if (msg["type"] == "login"){
                     
-                    let loginresult = await login(msg.data.username, msg.data.password);
+                    let loginresult = await login(msg.data.username, msg.data.password, msg.data.version);
                     //check if user is already logged in
                     if(SOCKET_MAP.has(msg.data.username + ";" + msg.data.password)){
                         loginresult = {type: "loginresult", data: {result: "useralreadyloggedin"}};
@@ -76,7 +79,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                 
                 }
                 else if (msg["type"] == "createaccount"){
-                    let result = await createUser(msg.data.username, msg.data.password);
+                    let result = await createUser(msg.data.username, msg.data.password, msg.data.version);
                     ws.send(JSON.stringify(result));
                     //sendIMessage(JSON.stringify(result), ws)
                     if(result.data.result == "usercreated"){
@@ -469,10 +472,61 @@ MongoClient.connect(mongo_url, (err, client) => {
     }
     );
 
+    //UDP
+    ///////////////////////////////////////////////////////////////////////////////
+
+    udps.on('message', (msg, rminfo) => {
+        //console.log(`server got: ${msg} from ${rminfo.address}:${rminfo.port}`)
+        //user must also give information about self
+        //server updates it
+        //let playerref = PLAYER_MAP.get(msg.data.username + ";" + msg.data.password)
+        msg = JSON.parse(msg.toString());
+
+        let playerref = PLAYER_MAP.get(msg.data.username)
+
+        if (playerref){
+            playerref.position = msg.data.position;
+            playerref.velocity = msg.data.velocity;
+            playerref.dir = msg.data.dir;
+            playerref.animstate = msg.data.animstate;
+            playerref.curhat = msg.data.curhat;
+            playerref.skin = msg.data.skin;
+            playerref.speech = msg.data.speech;
+            playerref.eyesopen = msg.data.eyesopen;
+        }
+
+        let otherplayerdata = {type: "worlddata", data:{
+            listofplayers: {}
+        }};
+
+        PLAYER_MAP.forEach((value, key, _map) => {
+            let username = key;
+            otherplayerdata.data.listofplayers[username] = {
+                position: value.position,
+                velocity: value.velocity,
+                dir: value.dir,
+                animstate: value.animstate,
+                curhat: value.curhat,
+                skin: value.skin,
+                speech: value.speech,
+                eyesopen: value.eyesopen
+            };
+        });
+
+        stringydata = JSON.stringify(otherplayerdata)
+        udps.send(stringydata,0,(new TextEncoder().encode(stringydata)).length,rminfo.port,rminfo.address);
+        //ws.send(JSON.stringify(otherplayerdata));
+    });
+
+    udps.bind(UDP_PORT);
+
+    ////////////////////////////////////////////////////////////////////////////////
 
 
-
-    async function createUser(username, password){
+    async function createUser(username, password, version){
+        if(version != VERSION){
+            return({type:"usercreationresult", data:{result:"wrongversion"}});
+        }
 
         if(!username.match("^[A-Za-z0-9_]+$") || !password.match("^[A-Za-z0-9_]+$")){
             return({type:"usercreationresult", data:{result:"invalidchars"}});
@@ -518,8 +572,12 @@ MongoClient.connect(mongo_url, (err, client) => {
         }
     }
 
-    async function login(username, password){
+    async function login(username, password, version){
         let result = await db.collection('users').findOne({username: username});
+
+        if(version != VERSION){
+            return({type:"loginresult", data:{result:"wrongversion"}});
+        }
 
         if(!result){
             //100 = user does not exist
