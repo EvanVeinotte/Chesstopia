@@ -121,16 +121,17 @@ class ChessGame {
     }
 
 
-    syncSpectators(newboardstate, newtime){
+    syncSpectators(newboardstate, newtime, deadpieces){
         for (let i=0; i < this.spectators.length; i++){
             this.SOCKET_MAP.get(this.spectators[i]).send(JSON.stringify({type:"syncspec", data:{
                 newboardstate: newboardstate,
                 newtime: newtime,
+                deadpieces: deadpieces
             }}));
         }
     }
 
-    makeMove(move, pprom, boardstate, hasmovedbs, mytime){
+    makeMove(move, pprom, boardstate, hasmovedbs, mytime, deadpieces){
         this.whitedraw = false;
         this.blackdraw = false;
         this.boardstate = boardstate
@@ -140,7 +141,8 @@ class ChessGame {
                 type: "sync", data: {
                     boardstate: this.boardstate,
                     hasmovedbs: hasmovedbs,
-                    opponenttime: mytime
+                    opponenttime: mytime,
+                    deadpieces: deadpieces
                 }
             };
         }else{
@@ -163,7 +165,7 @@ class ChessGame {
             this.turn = 0
         }
 
-        this.syncSpectators(boardstate, mytime);
+        this.syncSpectators(boardstate, mytime, deadpieces);
 
     }
 

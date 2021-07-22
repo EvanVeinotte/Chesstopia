@@ -135,7 +135,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                     let usergame = currentgames.get(msg.data.gamecode)
                     if(usergame){
                         usergame.makeMove(msg.data.move, msg.data.pprom, msg.data.boardstate, msg.data.hasmovedbs,
-                                            msg.data.mytime);
+                                            msg.data.mytime, msg.data.deadpieces);
                     }
                     else{
                         console.log("game not found")
@@ -306,6 +306,45 @@ MongoClient.connect(mongo_url, (err, client) => {
                         $push: {blocks: msg.data.blockee}
                     });
                 }
+                else if (msg["type"] == "updatequestdata"){
+                    db.collection("users").updateOne({username: msg.data.username},{
+                        $set: {questdata: msg.data.questdata}
+                    });
+                }
+
+                else if (msg["type"] == "unlockcosmetic"){
+
+                    let unlockables = ["trash_can"]
+                    if(unlockables.includes(msg.data.itemname)){
+                        if(msg.data.itemtype == "hats"){
+                            let hat = await db.collection("hats").findOne({hatname: msg.data.itemname})
+                            if(hat){
+                                db.collection("users").updateOne({username: msg.data.username}, 
+                                                                {$push: {ownedhats: msg.data.itemname}});
+                                db.collection("hats").updateOne({hatname: msg.data.itemname}, 
+                                                                {$set: {howmany: hat.howmany + 1}})
+                            }  
+                        }
+                        else if(msg.data.itemtype == "skins"){
+                            let skin = await db.collection("skins").findOne({skinname: msg.data.itemname})
+                            if(skin){
+                                db.collection("users").updateOne({username: msg.data.username}, 
+                                                                {$push: {ownedskins: msg.data.itemname}});
+                                db.collection("skins").updateOne({skinname: msg.data.itemname}, 
+                                                                {$set: {howmany: skin.howmany + 1}})
+                            }
+                        }
+                        else if(msg.data.itemtype == "chesssets"){
+                            let chessset = await db.collection("chesssets").findOne({chesssetname: msg.data.itemname})
+                            if(chessset){
+                                db.collection("users").updateOne({username: msg.data.username}, 
+                                                                {$push: {ownedchesssets: msg.data.itemname}});
+                                db.collection("chesssets").updateOne({chesssetname: msg.data.itemname}, 
+                                                                {$set: {howmany: chessset.howmany + 1}})
+                            }
+                        }
+                    }
+                }
 
                 else if (msg["type"] == "settingsupdate"){
                     db.collection("users").updateOne({username: msg.data.username},{
@@ -366,14 +405,11 @@ MongoClient.connect(mongo_url, (err, client) => {
                     //not doing a response if it costs too much because that should never happen
                     //because the client side will only send this if player has enough money
                     if(msg.data.itemtype == "hats"){
-                        console.log("lvl1")
                         let hat = await db.collection("hats").findOne({hatname: msg.data.itemname})
                         if(hat){
-                            console.log("lvl2")
                             console.log(hat.price)
                             console.log(playertopaz)
                             if(hat.price <= playertopaz){
-                                console.log("lvl3")
                                 db.collection("users").updateOne({username: msg.data.username}, 
                                                         {$push: {ownedhats: msg.data.itemname},
                                                         $set: {topaz: playertopaz - hat.price}});
@@ -562,7 +598,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                 chessset: 0,
                 ownedchesssets: ["default"],
                 privatemessages: [],
-                usersettings: [0, 0]
+                usersettings: [0, 0],
+                questdata: {}
             }
             //insert the new user in database
             await db.collection('users').insertOne(user_obj);
@@ -599,10 +636,15 @@ MongoClient.connect(mongo_url, (err, client) => {
             PLAYER_MAP.set(user.split(";")[0], new Player(userdata.position, userdata.curhat, userdata.skin, ws));
 
             let userobj = await db.collection("users").findOne({username: user.split(";")[0]});
-            if(userobj.privatemessages){
+            if(userobj.hasOwnProperty("privatemessages")){
                 userdata["haspms"] = !(userobj.privatemessages.length === 0);
             }else{
                 userdata["haspms"] = false;
+            }
+            if(userobj.hasOwnProperty("questdata")){
+                userdata["questdata"] = userobj.questdata
+            }else{
+                userdata["questdata"] = {}
             }
 
             let playerspawndata = {type: "spawninworld", data: userdata};
