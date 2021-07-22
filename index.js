@@ -17,7 +17,7 @@ const wss = new Websocket.Server({port: PORT});
 const udps = dgram.createSocket('udp4');
 
 const { MongoClient } = require('mongodb');
-const mongo_url = 'mongodb://127.0.0.1:27017/';
+const mongo_url = process.env.MONGO_URL;
 
 var SOCKET_MAP = new Map();
 
