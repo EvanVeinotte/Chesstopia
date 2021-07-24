@@ -508,56 +508,9 @@ MongoClient.connect(mongo_url, (err, client) => {
     }
     );
 
-    //UDP
-    ///////////////////////////////////////////////////////////////////////////////
-
-    udps.on('message', (msg, rminfo) => {
-        //console.log(`server got: ${msg} from ${rminfo.address}:${rminfo.port}`)
-        //user must also give information about self
-        //server updates it
-        //let playerref = PLAYER_MAP.get(msg.data.username + ";" + msg.data.password)
-        msg = JSON.parse(msg.toString());
-
-        let playerref = PLAYER_MAP.get(msg.data.username)
-
-        if (playerref){
-            playerref.position = msg.data.position;
-            playerref.velocity = msg.data.velocity;
-            playerref.dir = msg.data.dir;
-            playerref.animstate = msg.data.animstate;
-            playerref.curhat = msg.data.curhat;
-            playerref.skin = msg.data.skin;
-            playerref.speech = msg.data.speech;
-            playerref.eyesopen = msg.data.eyesopen;
-        }
-
-        let otherplayerdata = {type: "worlddata", data:{
-            listofplayers: {}
-        }};
-
-        PLAYER_MAP.forEach((value, key, _map) => {
-            let username = key;
-            otherplayerdata.data.listofplayers[username] = {
-                position: value.position,
-                velocity: value.velocity,
-                dir: value.dir,
-                animstate: value.animstate,
-                curhat: value.curhat,
-                skin: value.skin,
-                speech: value.speech,
-                eyesopen: value.eyesopen
-            };
-        });
-
-        stringydata = JSON.stringify(otherplayerdata)
-        udps.send(stringydata,0,(new TextEncoder().encode(stringydata)).length,rminfo.port,rminfo.address);
-        //ws.send(JSON.stringify(otherplayerdata));
-    });
-
-    udps.bind(UDP_PORT);
-
-    ////////////////////////////////////////////////////////////////////////////////
-
+    
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    
 
     async function createUser(username, password, version){
         if(version != VERSION){
