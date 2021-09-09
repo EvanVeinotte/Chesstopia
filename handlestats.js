@@ -17,10 +17,7 @@ class StatHandler{
     async EveryMin(){
         this.secondInterval = setInterval(async () => {
             let date_obj = new Date();
-            console.log(date_obj.getSeconds())
             if(date_obj.getSeconds() === 59){
-
-                console.log('min')
 
                 let cmin = date_obj.getMinutes()
                 let chour = date_obj.getHours()
