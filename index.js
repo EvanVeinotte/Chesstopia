@@ -3,6 +3,7 @@ const dgram = require('dgram');
 
 const ChessGame = require('./gameobjects').ChessGame
 const Player = require('./gameobjects').Player
+const StatHandler = require('./handlestats').StatHandler
 
 const getKeyByValue = require('./utils').getKeyByValue
 const isLoggedIn = require('./utils').isLoggedIn
@@ -11,13 +12,14 @@ const isLoggedIn = require('./utils').isLoggedIn
 const VERSION = "0.0.9";
 
 const PORT = 4421;
-const UDP_PORT = 4422;
 
 const wss = new Websocket.Server({port: PORT});
 const udps = dgram.createSocket('udp4');
 
 const { MongoClient } = require('mongodb');
-const mongo_url = process.env.MONGO_URL;
+//const mongo_url = process.env.MONGO_URL;
+const mongo_url = "mongodb://127.0.0.1:27017/";
+const MOD_KEY = "alhouette74";
 
 var SOCKET_MAP = new Map();
 
@@ -41,6 +43,8 @@ MongoClient.connect(mongo_url, (err, client) => {
     var db = client.db('Chesstopia');
 
     console.log(`running WebSocket Server on port ${PORT}`);
+
+    var HandlerOfStats = new StatHandler(db, PLAYER_MAP);
 
     wss.on('connection', async function(ws) {
 
@@ -79,7 +83,8 @@ MongoClient.connect(mongo_url, (err, client) => {
                 
                 }
                 else if (msg["type"] == "createaccount"){
-                    let result = await createUser(msg.data.username, msg.data.password, msg.data.version);
+                    let result = await createUser(msg.data.username, msg.data.password, msg.data.email,
+                                                    msg.data.version);
                     ws.send(JSON.stringify(result));
                     //sendIMessage(JSON.stringify(result), ws)
                     if(result.data.result == "usercreated"){
@@ -213,6 +218,61 @@ MongoClient.connect(mongo_url, (err, client) => {
                     else{
                         console.log("game not found")
                     }
+                }
+                //MOD
+                
+                //if type first three letters == mod
+                //then its a mod command
+                else if(msg["type"].substring(0, 3) == "mod"){
+
+                    if (msg["type"] == "modlogin"){
+                    
+                        let loginresult = await loginmod(msg.data.username, msg.data.password, msg.data.modkey);
+        
+                        ws.send(JSON.stringify(loginresult));
+                        //sendIMessage(JSON.stringify(loginresult), ws);
+                        if(loginresult.data.result == "loginsuccess"){
+                            console.log(`mod logged in to ${msg["data"]["username"]}`);
+                        }
+                    }
+                    else {
+                        
+                        let moduserdata = await db.collection('users').findOne({username: msg.data.moduser});
+                        if(moduserdata.password == msg.data.modpass && MOD_KEY == msg.data.modkey){
+        
+                            if (msg["type"] == "modgetuserdata"){
+                                let userdata = await db.collection('users').findOne({username: msg.data.username});
+
+                                if(userdata){
+                                    //delete private data
+                                    delete userdata.password;
+                                    delete userdata.email;
+                    
+                                    ws.send(JSON.stringify({type:"userdatares", data: userdata}));
+                                }else{
+                                    ws.send(JSON.stringify({type:"userdataresfail"}));
+                                }
+                
+                            }
+                            
+                            else if (msg["type"] == "modsetban"){
+                                db.collection("users").updateOne({username: msg.data.username},
+                                                                {$set:{banned: msg.data.setbanto}});
+                                if(msg.data.setbanto){
+                                    db.collection("users").updateOne({username: msg.data.username},
+                                                                    {$push: {banreasons: msg.data.reasonforban}});
+                                    if(PLAYER_MAP.has(msg.data.username)){
+                                        PLAYER_MAP.get(msg.data.username).ws.send(JSON.stringify({type: "getbanned",
+                                                                        data: {reasonforban: msg.data.reasonforban}}))
+                                    }
+                                }
+                            }
+        
+        
+        
+                        }  
+                    }
+        
                 }
 
                 //Overworld
@@ -512,9 +572,13 @@ MongoClient.connect(mongo_url, (err, client) => {
     ////////////////////////////////////////////////////////////////////////////////////////////////
     
 
-    async function createUser(username, password, version){
+    async function createUser(username, password, email, version){
         if(version != VERSION){
             return({type:"usercreationresult", data:{result:"wrongversion"}});
+        }
+
+        if(!email.includes("@")){
+            return({type:"usercreationresult", data:{result:"invalidemail"}});
         }
 
         if(!username.match("^[A-Za-z0-9_]+$") || !password.match("^[A-Za-z0-9_]+$")){
@@ -536,6 +600,7 @@ MongoClient.connect(mongo_url, (err, client) => {
             let user_obj = {
                 username: username,
                 password: password,
+                email: email,
                 position: [0, 450],
                 curhat: "no_hat",
                 elo: 800,
@@ -552,7 +617,10 @@ MongoClient.connect(mongo_url, (err, client) => {
                 ownedchesssets: ["default"],
                 privatemessages: [],
                 usersettings: [0, 0],
-                questdata: {}
+                questdata: {},
+                modstatus: 0,
+                banned: false,
+                banreasons: []
             }
             //insert the new user in database
             await db.collection('users').insertOne(user_obj);
@@ -572,6 +640,34 @@ MongoClient.connect(mongo_url, (err, client) => {
         if(!result){
             //100 = user does not exist
             return({type: "loginresult", data: {result: "usernoexist"}});
+        }
+        else if(result.banned == true){
+            //200 = login success
+            return({type: "loginresult", data: {result: "userisbanned", 
+                                                reason: result.banreasons[result.banreasons.length - 1]}});
+        }
+        else if(result.password === password){
+            //200 = login success
+            return({type: "loginresult", data: {result: "loginsuccess"}});
+        }
+        else{
+            //300 = password incorrect
+            return({type: "loginresult", data: {result: "passwordincorrect"}});
+        }
+    }
+
+    async function loginmod(username, password, modkey){
+        let result = await db.collection('users').findOne({username: username});
+
+        if(!result){
+            //100 = user does not exist
+            return({type: "loginresult", data: {result: "usernoexist"}});
+        }
+        else if(result.modstatus <= 0 || !result.hasOwnProperty("modstatus")){
+            return({type: "loginresult", data: {result: "isnotmod"}});
+        }
+        else if(modkey != MOD_KEY){
+            return({type: "loginresult", data: {result: "incorrectmodkey"}});
         }
         else if(result.password === password){
             //200 = login success
