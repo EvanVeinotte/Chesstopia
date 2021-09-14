@@ -8,7 +8,7 @@ const getKeyByValue = require('./utils').getKeyByValue
 const isLoggedIn = require('./utils').isLoggedIn
 //const sendIMessage = require('./utils').sendIMessage
 
-const VERSION = "0.0.9";
+const VERSION = "0.1.0";
 
 const PORT = 4421;
 
