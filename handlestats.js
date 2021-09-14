@@ -62,7 +62,7 @@ class StatHandler{
                     //also new day
                     if(chour === 0){
 
-                        await this.db.collection('gamestats').updateOne({dataname: ("0" + (month + 1)).slice(-2)},
+                        await this.db.collection('gamestats').updateOne({dataname: cyear + ("0" + (cmonth + 1)).slice(-2)},
                                                                         {$push:{peaksofthemonth: dailypeak,
                                                                                 peaksdays: cday}})
 
