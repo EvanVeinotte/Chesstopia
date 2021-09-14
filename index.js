@@ -1,6 +1,3 @@
-const { createServer } = require('https');
-const { readFileSync } = require('fs');
-
 const Websocket = require('ws');
 
 const ChessGame = require('./gameobjects').ChessGame
@@ -14,11 +11,6 @@ const isLoggedIn = require('./utils').isLoggedIn
 const VERSION = "0.0.9";
 
 const PORT = 4421;
-
-const server = createServer({
-    cert: readFileSync('/path/to/cert.pem'),
-    key: readFileSync('/path/to/key.pem')
-});
 
 const wss = new Websocket.Server({port: PORT});
 
