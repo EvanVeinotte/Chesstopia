@@ -10,7 +10,7 @@ class StatHandler{
                             '14:00': 0, '15:00': 0, '16:00': 0, '17:00': 0, '18:00': 0, '19:00': 0, '20:00': 0,
                             '21:00': 0, '22:00': 0, '23:00': 0, 'peak': 0}
         this.peakhours = {...this.defaulthours};
-
+        
         this.EveryMin()
     }
 
@@ -75,14 +75,18 @@ class StatHandler{
     }
 
     async addNewHourPeak(year, month, day, peakhours){
+        console.log("omega1")
         let monthresult = await this.db.collection('gamestats').findOne({dataname: year + ("0" + (month + 1)).slice(-2)});
+        console.log(monthresult)
         if(monthresult){
+            console.log("omega2")
             let setobj = {}
             setobj[("0" + day).slice(-2)] = peakhours
-            await this.db.collection('gamestats').updateOne({dataname: ("0" + (month + 1)).slice(-2)},
+            await this.db.collection('gamestats').updateOne({dataname: year + ("0" + (month + 1)).slice(-2)},
                                                         {$set:setobj})
             
         }else{
+            console.log("omega3")
             let newdoc = {'dataname': year + ("0" + (month + 1)).slice(-2)}
             newdoc[("0" + day).slice(-2)] = peakhours;
 

@@ -1,5 +1,7 @@
+const { createServer } = require('https');
+const { readFileSync } = require('fs');
+
 const Websocket = require('ws');
-const dgram = require('dgram');
 
 const ChessGame = require('./gameobjects').ChessGame
 const Player = require('./gameobjects').Player
@@ -13,8 +15,12 @@ const VERSION = "0.0.9";
 
 const PORT = 4421;
 
+const server = createServer({
+    cert: readFileSync('/path/to/cert.pem'),
+    key: readFileSync('/path/to/key.pem')
+});
+
 const wss = new Websocket.Server({port: PORT});
-const udps = dgram.createSocket('udp4');
 
 const { MongoClient } = require('mongodb');
 //const mongo_url = process.env.MONGO_URL;
@@ -22,6 +28,12 @@ const mongo_url = "mongodb://127.0.0.1:27017/";
 const MOD_KEY = "alhouette74";
 
 var SOCKET_MAP = new Map();
+
+var MOD_MAP = new Map();
+
+var most_reported = [];
+
+const most_reported_length = 10;
 
 var PLAYER_MAP = new Map();
 
@@ -219,6 +231,10 @@ MongoClient.connect(mongo_url, (err, client) => {
                         console.log("game not found")
                     }
                 }
+                else if(msg["type"] == "report"){
+                    processMostReported(msg.data.reported, msg.data.reporter, msg.data.reason, db)
+
+                }
                 //MOD
                 
                 //if type first three letters == mod
@@ -232,6 +248,7 @@ MongoClient.connect(mongo_url, (err, client) => {
                         ws.send(JSON.stringify(loginresult));
                         //sendIMessage(JSON.stringify(loginresult), ws);
                         if(loginresult.data.result == "loginsuccess"){
+                            MOD_MAP.set(msg.data.username, ws);
                             console.log(`mod logged in to ${msg["data"]["username"]}`);
                         }
                     }
@@ -265,9 +282,10 @@ MongoClient.connect(mongo_url, (err, client) => {
                                         PLAYER_MAP.get(msg.data.username).ws.send(JSON.stringify({type: "getbanned",
                                                                         data: {reasonforban: msg.data.reasonforban}}))
                                     }
+
+                                    reportedListUponBan(msg.data.username)
                                 }
                             }
-        
         
         
                         }  
@@ -318,9 +336,17 @@ MongoClient.connect(mongo_url, (err, client) => {
                 else if (msg["type"] == "sendpm"){
                     let receiver = await db.collection("users").findOne({username: msg.data.receiver})
                     if(receiver){
-                        if(receiver.blocks){
-                            if(!(receiver.blocks.includes(msg.data.pm.signature))){
-                                addPM(receiver, msg.data.pm)
+                        
+                        if(receiver.hasOwnProperty("streamermode")){
+                            if(receiver.streamermode){
+                                if(receiver.trusted.includes(msg.data.pm.signature)){
+                                    addPM(receiver, msg.data.pm)
+                                }
+                            }
+                            else if(receiver.hasOwnProperty("blocked")){
+                                if(!(receiver.blocked.includes(msg.data.pm.signature))){
+                                    addPM(receiver, msg.data.pm)
+                                }
                             }
                         }
                         else{
@@ -412,15 +438,32 @@ MongoClient.connect(mongo_url, (err, client) => {
                     });
                 }
 
+                else if (msg["type"] == "blocktruststreamupdate"){
+                    db.collection("users").updateOne({username: msg.data.username},{
+                        $set: {blocked: msg.data.blocked, trusted: msg.data.trusted,
+                                streamermode: msg.data.streamermode}
+                    });
+
+                }
+
                 else if (msg["type"] == "challengereq"){
-                    PLAYER_MAP.get(msg.data.challengee).ws.send(JSON.stringify({
-                        type: "newchallenge",
-                        data: {
-                            challenger: msg.data.challenger,
-                            challengee: msg.data.challengee,
-                            gametime: msg.data.gametime
+
+                    let result = await db.collection("users").findOne({username: msg.data.challengee});
+                    if(result){
+                        if(result.hasOwnProperty("blocked")){
+                            if(!result.blocked.includes(msg.data.challenger)){
+                                PLAYER_MAP.get(msg.data.challengee).ws.send(JSON.stringify({
+                                    type: "newchallenge",
+                                    data: {
+                                        challenger: msg.data.challenger,
+                                        challengee: msg.data.challengee,
+                                        gametime: msg.data.gametime
+                                    }
+                                }));
+                            }
                         }
-                    }));
+                    }
+                    
                 }
 
                 else if (msg["type"] == "challengeans"){
@@ -516,6 +559,7 @@ MongoClient.connect(mongo_url, (err, client) => {
 
         ws.on('close', (code, reason) => {
             let user = getKeyByValue(SOCKET_MAP, ws);
+            let moduser = getKeyByValue(MOD_MAP, ws);
             if(user){
 
                 SOCKET_MAP.delete(user)
@@ -559,7 +603,12 @@ MongoClient.connect(mongo_url, (err, client) => {
                 console.log(`user ${user} disconnected with code ${code}`);
                 console.log(waitingforgame)
 
-            }else{
+            }
+            else if(moduser){
+                MOD_MAP.delete(moduser)
+                console.log(`mod user ${user} disconnected with code ${code}`);
+            }
+            else{
                 console.log(`unknown user disconnected with code ${code}`)
             }
             
@@ -695,6 +744,21 @@ MongoClient.connect(mongo_url, (err, client) => {
             }else{
                 userdata["questdata"] = {}
             }
+            if(userobj.hasOwnProperty("streamermode")){
+                userdata["streamermode"] = userobj.streamermode
+            }else{
+                userdata["streamermode"] = false
+            }
+            if(userobj.hasOwnProperty("blocked")){
+                userdata["blocked"] = userobj.blocked
+            }else{
+                userdata["blocked"] = []
+            }
+            if(userobj.hasOwnProperty("trusted")){
+                userdata["trusted"] = userobj.trusted
+            }else{
+                userdata["trusted"] = []
+            }
 
             let playerspawndata = {type: "spawninworld", data: userdata};
 
@@ -758,6 +822,84 @@ MongoClient.connect(mongo_url, (err, client) => {
         return pubdata;
     }
 
+    async function processMostReported(newreporteduser, reporter, reason, db){
+        let dateobj = new Date()
+        db.collection("users").updateOne({username: newreporteduser},{
+            $push: {reports: {date: dateobj.toDateString() + " " + dateobj.toTimeString(), reporter: reporter, reason: reason}}
+        }).then(async (T) => {
+
+            let result = await db.collection("users").findOne({username: newreporteduser});
+            let numofreports;
+            if(result.hasOwnProperty('reports')){
+                numofreports = result.reports.length;
+            }else{
+                numofreports = 0;
+                console.log("Something went very wrong")
+            }
+            let reportobject = [numofreports, newreporteduser]
+            //-1 means no
+            let alreadyinlistindex = -1;
+            for(let i=0; i<most_reported.length; i++){
+                if(most_reported[i][1] === newreporteduser){
+                    alreadyinlistindex = i;
+                }
+            }
+            if(most_reported.length < most_reported_length){
+                if(alreadyinlistindex !== -1){
+                    most_reported[alreadyinlistindex] = reportobject
+                }else{
+                    most_reported.push(reportobject)
+                }
+            }
+            else{
+                if(alreadyinlistindex !== -1){
+                    //if old number of my reports is more than current
+                    if(most_reported[alreadyinlistindex][0] > numofreports){
+                        //delete
+                        most_reported.splice(alreadyinlistindex, 1);
+                    }
+                    else{
+                        most_reported[alreadyinlistindex] = reportobject
+                    }
+                    most_reported.sort(function(a, b){return b[0] - a[0]});
+                }
+                else{
+                    most_reported.push(reportobject);
+                    most_reported.sort(function(a, b){return b[0] - a[0]});
+                    most_reported.pop()
+                }
+
+            }
+
+            let topreportedobj = {};
+            for(let i=0; i<most_reported.length; i++){
+                topreportedobj[most_reported[i][1]] = most_reported[i][0]
+            }
+
+            MOD_MAP.forEach((value, key, _map) => {
+                value.send(JSON.stringify({
+                    type:"newreport",
+                    data: {
+                        reported: newreporteduser,
+                        reason: reason,
+                        reporter: reporter,
+                        mostreported: topreportedobj
+                    }
+                }))
+            })
+            console.log(most_reported)
+
+        }).catch((err)=>{
+            console.log("someonereportedinvaliduser")
+        })
+    }
+    async function reportedListUponBan(username){
+        for (let i=0; i<most_reported.length; i++){
+            if(most_reported[i][1] === username){
+                most_reported.splice(i, 1);
+            }
+        }
+    }
     
 });
 
