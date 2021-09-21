@@ -62,9 +62,11 @@ class StatHandler{
                     //also new day
                     if(chour === 0){
 
-                        await this.db.collection('gamestats').updateOne({dataname: cyear + ("0" + (cmonth + 1)).slice(-2)},
+                        this.db.collection('gamestats').updateOne({dataname: cyear + ("0" + (cmonth + 1)).slice(-2)},
                                                                         {$push:{peaksofthemonth: dailypeak,
-                                                                                peaksdays: cday}})
+                                                                                peaksdays: cday}}).catch((err)=>{
+                                                                                    console.log("*** " + err + " ***")
+                                                                                })
 
                         this.peakhours = {...this.defaulthours}
                     }
@@ -77,7 +79,6 @@ class StatHandler{
     async addNewHourPeak(year, month, day, peakhours){
         console.log("omega1")
         let monthresult = await this.db.collection('gamestats').findOne({dataname: year + ("0" + (month + 1)).slice(-2)});
-        console.log(monthresult)
         if(monthresult){
             console.log("omega2")
             let setobj = {}
