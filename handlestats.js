@@ -10,6 +10,8 @@ class StatHandler{
                             '14:00': 0, '15:00': 0, '16:00': 0, '17:00': 0, '18:00': 0, '19:00': 0, '20:00': 0,
                             '21:00': 0, '22:00': 0, '23:00': 0, 'peak': 0}
         this.peakhours = {...this.defaulthours};
+
+        this.dailypeak = 0;
         
         this.EveryMin()
     }
@@ -37,15 +39,15 @@ class StatHandler{
 
                     //new day
                     if(chour === 0){
-                        let dailypeak = 0;
+                        this.dailypeak = 0;
                         let curval;
                         for (let i=0; i<24; i++){
                             curval = this.peakhours[i.toString() + ":00"];
-                            if (curval > dailypeak){
-                                dailypeak = curval;
+                            if (curval > this.dailypeak){
+                                this.dailypeak = curval;
                             }
                         }
-                        this.peakhours['peak'] = dailypeak;
+                        this.peakhours['peak'] = this.dailypeak;
 
                     }
 
@@ -63,7 +65,7 @@ class StatHandler{
                     if(chour === 0){
 
                         this.db.collection('gamestats').updateOne({dataname: cyear + ("0" + (cmonth + 1)).slice(-2)},
-                                                                        {$push:{peaksofthemonth: dailypeak,
+                                                                        {$push:{peaksofthemonth: this.dailypeak,
                                                                                 peaksdays: cday}}).catch((err)=>{
                                                                                     console.log("*** " + err + " ***")
                                                                                 })
